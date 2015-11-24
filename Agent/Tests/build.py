@@ -102,7 +102,7 @@ CLIENT_DIR=os.path.join(PROJ_ROOT, "Client")
 CLIENT_OUT=CLIENT_NAME + ".exe"
 CLIENT_OUT_PDB=CLIENT_NAME + ".pdb"
 
-DRIVER_SOURCES = ["driver.c", "klog.c"]
+DRIVER_SOURCES = ["driver.c", "klog.c", "fastio.c"]
 
 CLIENT_SOURCES = ["client.c", "scmload.c", "main.c"]
 

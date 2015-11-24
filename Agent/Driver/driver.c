@@ -2,6 +2,7 @@
 #include "inc/klog.h"
 #include "inc/mtags.h"
 #include "inc/ntapiex.h"
+#include "inc/fastio.h"
 #include "h/ioctl.h"
 
 #define FBDEV_EXT_MAGIC 0xCBDACBDA
@@ -14,6 +15,7 @@ typedef struct _FBDEV_EXT
     BOOLEAN SymLinkCreated;
     PDEVICE_OBJECT TargetDevice;
     PDEVICE_OBJECT AttachedToDevice;
+    volatile LONG  IrpCount;
 } FBDEV_EXT, *PFBDEV_EXT;
 
 typedef struct _FBDRIVER {
@@ -23,6 +25,37 @@ typedef struct _FBDRIVER {
 } FBDRIVER, *PFBDRIVER;
 
 FBDRIVER g_FbDriver;
+
+FAST_IO_DISPATCH g_FbFastIoDispatch = {
+    .SizeOfFastIoDispatch = sizeof(FAST_IO_DISPATCH),
+    .FastIoCheckIfPossible = FbFastIoCheckIfPossible,
+    .FastIoRead = FbFastIoRead,
+    .FastIoWrite = FbFastIoWrite,    
+    .FastIoQueryBasicInfo = FbFastIoQueryBasicInfo,
+    .FastIoQueryStandardInfo = FbFastIoQueryStandardInfo,
+    .FastIoLock = FbFastIoLock,
+    .FastIoUnlockSingle = FbFastIoUnlockSingle,
+    .FastIoUnlockAll  = FbFastIoUnlockAll,
+    .FastIoUnlockAllByKey = FbFastIoUnlockAllByKey,
+    .FastIoDeviceControl = FbFastIoDeviceControl,
+    .AcquireFileForNtCreateSection = FbFastIoAcquireFile,
+    .ReleaseFileForNtCreateSection = FbFastIoReleaseFile,
+    .FastIoDetachDevice = FbFastIoDetachDevice,
+    .FastIoQueryNetworkOpenInfo = FbFastIoQueryNetworkOpenInfo,
+    .AcquireForModWrite = FbFastIoAcquireForModWrite,
+    .MdlRead = FbFastIoMdlRead,
+    .MdlReadComplete = FbFastIoMdlReadComplete,
+    .PrepareMdlWrite = FbFastIoPrepareMdlWrite,  
+    .MdlWriteComplete = FbFastIoMdlWriteComplete,
+    .FastIoReadCompressed = FbFastIoReadCompressed,
+    .FastIoWriteCompressed = FbFastIoWriteCompressed,    
+    .MdlReadCompleteCompressed = FbFastIoMdlReadCompleteCompressed,
+    .MdlWriteCompleteCompressed = FbFastIoMdlWriteCompleteCompressed,
+    .ReleaseForModWrite = FbFastIoReleaseForModWrite,
+    .AcquireForCcFlush = FbFastIoAcquireForCcFlush,
+    .ReleaseForCcFlush = FbFastIoReleaseForCcFlush,    
+    .FastIoQueryOpen  = FbFastIoQueryOpen
+};
 
 FORCEINLINE PFBDRIVER GetFbDriver(VOID) {
     return &g_FbDriver;
@@ -190,7 +223,6 @@ NTSTATUS FbDriverStart(VOID)
         }
         ObDereferenceObject(Device);
     }
-
     NpFree(DeviceObjectList, MTAG_DRV);
     return STATUS_SUCCESS;
 Fail_get_dev_list:
@@ -241,10 +273,12 @@ VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
 
     for (i = 0; i < NrDeviceObjects; i++) {
         Device = DeviceObjectList[i];
-        KLInf("Going to delete device %p", Device);
         DevExt = (PFBDEV_EXT)Device->DeviceExtension;
         if (DevExt->Magic != FBDEV_EXT_MAGIC)
             __debugbreak();
+
+        KLInf("Going to delete Device %p IrpCount %d", Device, DevExt->IrpCount);
+
         if (DevExt->SymLinkCreated) {
             KLInf("Deleting symlink %wZ", &DevExt->SymLinkName);
             IoDeleteSymbolicLink(&DevExt->SymLinkName);
@@ -350,10 +384,15 @@ DriverIrpHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (DevExt->Magic != FBDEV_EXT_MAGIC)
         __debugbreak();
 
-    if (DeviceObject == GetFbDriver()->CtlDevice)
+    if (DeviceObject == GetFbDriver()->CtlDevice) {
+        InterlockedIncrement(&DevExt->IrpCount);
         return DevCtlIrpHandler(DeviceObject, Irp);
+    }
 
     if (DevExt->AttachedToDevice) {
+        KLDbg("FltDevice %p Device %p Irp %p", DeviceObject, DevExt->AttachedToDevice, Irp);
+
+        InterlockedIncrement(&DevExt->IrpCount);
         IoSkipCurrentIrpStackLocation(Irp);
         return IoCallDriver(DevExt->AttachedToDevice, Irp);
     }
@@ -376,7 +415,7 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++) {
         DriverObject->MajorFunction[i] = DriverIrpHandler;
     }
-
+    DriverObject->FastIoDispatch = &g_FbFastIoDispatch;
     RtlInitUnicodeString( &DeviceName, FBACKUP_DRV_NT_DEVICE_NAME_W);
 
     Status = KLogInit();
