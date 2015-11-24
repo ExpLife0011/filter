@@ -1,6 +1,7 @@
 #include "inc/driver.h"
 #include "inc/klog.h"
 #include "inc/mtags.h"
+#include "inc/ntapiex.h"
 #include "h/ioctl.h"
 
 #define FBDEV_EXT_MAGIC 0xCBDACBDA
@@ -11,11 +12,21 @@ typedef struct _FBDEV_EXT
     PDEVICE_OBJECT DeviceObject;
     UNICODE_STRING SymLinkName;
     BOOLEAN SymLinkCreated;
-    PDEVICE_OBJECT AttachedDevice;
+    PDEVICE_OBJECT TargetDevice;
+    PDEVICE_OBJECT AttachedToDevice;
 } FBDEV_EXT, *PFBDEV_EXT;
 
-PDRIVER_OBJECT g_Driver;
-PDEVICE_OBJECT g_CtlDevice;
+typedef struct _FBDRIVER {
+    PDRIVER_OBJECT Driver;
+    PDEVICE_OBJECT CtlDevice;
+    PDRIVER_OBJECT NtfsDriver;
+} FBDRIVER, *PFBDRIVER;
+
+FBDRIVER g_FbDriver;
+
+FORCEINLINE PFBDRIVER GetFbDriver(VOID) {
+    return &g_FbDriver;
+}
 
 NTSTATUS 
     CompleteIrp( PIRP Irp, NTSTATUS status, ULONG info)
@@ -26,15 +37,45 @@ NTSTATUS
     return status;
 }
 
-VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
+NTSTATUS GetObjectByName(PUNICODE_STRING ObjName, POBJECT_TYPE ObjectType, PVOID *pObject)
+{
+    PVOID Object;
+    NTSTATUS Status;
+    OBJECT_ATTRIBUTES ObjAttrs;
+    HANDLE ObjectHandle;
+
+    InitializeObjectAttributes(&ObjAttrs, ObjName, OBJ_CASE_INSENSITIVE|OBJ_KERNEL_HANDLE, NULL, NULL);
+
+    Status = ObOpenObjectByName(&ObjAttrs, ObjectType, KernelMode, NULL, 0, NULL, &ObjectHandle);
+    if (!NT_SUCCESS(Status)) {
+        KLErr("Can't open object by name Status 0x%x", Status);
+        return Status;
+    }
+
+    Status = ObReferenceObjectByHandle(ObjectHandle, 0, *IoDriverObjectType, KernelMode, &Object, NULL);
+    if (!NT_SUCCESS(Status)) {
+        KLErr("Can't reference object by handle %p Status 0x%x", ObjectHandle, Status);
+        ZwClose(ObjectHandle);
+        return Status;
+    }
+    ZwClose(ObjectHandle);
+    *pObject = Object;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS GetNtfsDriverObject(PDRIVER_OBJECT *pDriver)
+{
+    UNICODE_STRING ObjName = RTL_CONSTANT_STRING(L"\\FileSystem\\Ntfs");
+
+    KLInf("IoDriverObjectType %p", *IoDriverObjectType);
+    return GetObjectByName(&ObjName, *IoDriverObjectType, pDriver);
+}
+
+NTSTATUS GetDriverDevicesList(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT **pDeviceObjectList, ULONG *pNrDeviceObjects)
 {
     ULONG NrDeviceObjects, DeviceObjectListSize;
-    PDEVICE_OBJECT *DeviceObjectList, Device;
+    PDEVICE_OBJECT *DeviceObjectList;
     NTSTATUS Status;
-    ULONG i;
-    PFBDEV_EXT DevExt;
-
-    KLInf("UnloadRoutine driver %p", DriverObject);
 
     while (TRUE) {
         DeviceObjectList = NULL;
@@ -56,23 +97,168 @@ VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
             NpFree(DeviceObjectList, MTAG_DRV);
             continue;
         }
-
-        for (i = 0; i < NrDeviceObjects; i++) {
-            Device = DeviceObjectList[i];
-            KLInf("Going to delete device %p", Device);
-            DevExt = (PFBDEV_EXT)Device->DeviceExtension;
-            if (DevExt->Magic != FBDEV_EXT_MAGIC)
-                __debugbreak();
-            if (DevExt->SymLinkCreated) {
-                KLInf("Deleting symlink %wZ", &DevExt->SymLinkName);
-                IoDeleteSymbolicLink(&DevExt->SymLinkName);
-            }
-            IoDeleteDevice(Device);
-            ObDereferenceObject(Device);
-        }
-        NpFree(DeviceObjectList, MTAG_DRV);
         break;
     }
+
+    *pDeviceObjectList = DeviceObjectList;
+    *pNrDeviceObjects = NrDeviceObjects;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS FbDriverAttachDevice(PDEVICE_OBJECT DeviceObject)
+{
+    NTSTATUS Status;
+    PFBDRIVER FbDriver = GetFbDriver();
+    PDEVICE_OBJECT FltDevice;
+    PFBDEV_EXT DevExt;
+    ULONG i;
+
+    Status = IoCreateDevice(FbDriver->Driver, sizeof(FBDEV_EXT), NULL, DeviceObject->DeviceType, 0, FALSE, &FltDevice);
+    if (!NT_SUCCESS(Status)) {
+        KLErr("Can't create filter device Status 0x%x", Status);
+        return Status;
+    }
+    DevExt = (PFBDEV_EXT)FltDevice->DeviceExtension;
+    RtlZeroMemory(DevExt, sizeof(*DevExt));
+    DevExt->DeviceObject = DeviceObject;
+    DevExt->Magic = FBDEV_EXT_MAGIC;
+    for (i = 0; i < 10; i++) {
+        Status = IoAttachDeviceToDeviceStackSafe(FltDevice, DeviceObject, &DevExt->AttachedToDevice);
+        if (!NT_SUCCESS(Status)) {
+            LARGE_INTEGER WaitInterval;
+            KLErr("Can't attach to device %p Status 0x%x", DeviceObject, Status);
+            WaitInterval.QuadPart = -10*1000*1000*10; /* 10ms */
+            KeDelayExecutionThread(KernelMode, FALSE, &WaitInterval);
+        } else {
+            KLInf("Attached FltDevice %p AttachedTo %p Target %p", FltDevice, DevExt->AttachedToDevice, DeviceObject);
+            break;
+        }
+    }
+
+    if (!NT_SUCCESS(Status)) {
+        KLErr("Can't attach to device %p Status 0x%x", DeviceObject, Status);
+        IoDeleteDevice(FltDevice);
+        return Status;
+    }
+
+    if (FlagOn(DevExt->AttachedToDevice->Flags, DO_BUFFERED_IO))
+        SetFlag(FltDevice->Flags, DO_BUFFERED_IO);
+
+    if (FlagOn(DevExt->AttachedToDevice->Flags, DO_DIRECT_IO))
+        SetFlag(FltDevice->Flags, DO_BUFFERED_IO);
+
+    if (FlagOn(DevExt->AttachedToDevice->Characteristics, FILE_DEVICE_SECURE_OPEN))
+        SetFlag(FltDevice->Characteristics, FILE_DEVICE_SECURE_OPEN);
+
+    DevExt->TargetDevice = DeviceObject;
+    ObReferenceObject(DevExt->TargetDevice);
+    ObReferenceObject(DevExt->AttachedToDevice);
+
+    ClearFlag(FltDevice->Flags, DO_DEVICE_INITIALIZING);
+
+    return Status;
+}
+
+NTSTATUS FbDriverStart(VOID)
+{
+    PFBDRIVER FbDriver = GetFbDriver();
+    ULONG NrDeviceObjects;
+    PDEVICE_OBJECT *DeviceObjectList;
+    ULONG i;
+    NTSTATUS Status;
+    PDEVICE_OBJECT Device;
+
+    Status = GetNtfsDriverObject(&FbDriver->NtfsDriver);
+    KLInf("GetNtfsDriverObject Status 0x%x NtfsDriver %p", Status, FbDriver->NtfsDriver);
+    if (!NT_SUCCESS(Status)) {
+        goto Out;
+    }
+
+    Status = GetDriverDevicesList(FbDriver->NtfsDriver, &DeviceObjectList, &NrDeviceObjects);
+    if (!NT_SUCCESS(Status)) {
+        KLErr("Can't get devices list for driver %p Status 0x%x", GetFbDriver()->NtfsDriver, Status);
+        __debugbreak();
+        goto Fail_get_dev_list;
+    }
+
+    for (i = 0; i < NrDeviceObjects; i++) {
+        Device = DeviceObjectList[i];
+        KLInf("Ntfs device %p", Device);
+        Status  = FbDriverAttachDevice(Device);
+        if (!NT_SUCCESS(Status)) {
+            KLErr("FbDriverAttachDevice Status 0x%x", Status);
+        }
+        ObDereferenceObject(Device);
+    }
+
+    NpFree(DeviceObjectList, MTAG_DRV);
+    return STATUS_SUCCESS;
+Fail_get_dev_list:
+    ObDereferenceObject(FbDriver->NtfsDriver);
+    FbDriver->NtfsDriver = NULL;
+Out:
+    return Status;
+}
+
+VOID FbDriverStop(VOID)
+{
+    PFBDRIVER FbDriver = GetFbDriver();
+
+    if (FbDriver->NtfsDriver) {
+        ObDereferenceObject(FbDriver->NtfsDriver);
+        FbDriver->NtfsDriver = NULL;
+    }
+}
+
+NTSTATUS FbCtlInit(VOID)
+{
+    return FbDriverStart();
+}
+
+NTSTATUS FbCtlRelease(VOID)
+{
+    FbDriverStop();
+    return STATUS_SUCCESS;
+}
+
+VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
+{
+    ULONG NrDeviceObjects;
+    PDEVICE_OBJECT *DeviceObjectList, Device;
+    NTSTATUS Status;
+    ULONG i;
+    PFBDEV_EXT DevExt;
+
+    KLInf("UnloadRoutine driver %p", DriverObject);
+    FbDriverStop();
+
+    Status = GetDriverDevicesList(DriverObject, &DeviceObjectList, &NrDeviceObjects);
+    if (!NT_SUCCESS(Status)) {
+        KLErr("Can't get devices list for driver %p Status 0x%x", DriverObject, Status);
+        __debugbreak();
+        return;
+    }
+
+    for (i = 0; i < NrDeviceObjects; i++) {
+        Device = DeviceObjectList[i];
+        KLInf("Going to delete device %p", Device);
+        DevExt = (PFBDEV_EXT)Device->DeviceExtension;
+        if (DevExt->Magic != FBDEV_EXT_MAGIC)
+            __debugbreak();
+        if (DevExt->SymLinkCreated) {
+            KLInf("Deleting symlink %wZ", &DevExt->SymLinkName);
+            IoDeleteSymbolicLink(&DevExt->SymLinkName);
+        }
+        if (DevExt->AttachedToDevice) {
+            IoDetachDevice(DevExt->AttachedToDevice);
+            ObDereferenceObject(DevExt->TargetDevice);
+            ObDereferenceObject(DevExt->AttachedToDevice);
+        }
+        IoDeleteDevice(Device);
+        ObDereferenceObject(Device);
+    }
+    NpFree(DeviceObjectList, MTAG_DRV);
+
     KLInf("UnloadRoutine completed");
     KLogDeinit();
 }
@@ -98,10 +284,10 @@ NTSTATUS DevCtlCtlHandler( IN PDEVICE_OBJECT Device, IN PIRP Irp )
 
     switch (ControlCode) {
     case IOCTL_FBACKUP_INIT:  
-        Status = STATUS_SUCCESS;
+        Status = FbCtlInit();
         break;
     case IOCTL_FBACKUP_RELEASE:
-        Status = STATUS_SUCCESS;
+        Status = FbCtlRelease();
         break;
     case IOCTL_FBACKUP_TEST:
         Status = STATUS_NOT_SUPPORTED;
@@ -164,12 +350,12 @@ DriverIrpHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (DevExt->Magic != FBDEV_EXT_MAGIC)
         __debugbreak();
 
-    if (DeviceObject == g_CtlDevice)
+    if (DeviceObject == GetFbDriver()->CtlDevice)
         return DevCtlIrpHandler(DeviceObject, Irp);
 
-    if (DevExt->AttachedDevice) {
+    if (DevExt->AttachedToDevice) {
         IoSkipCurrentIrpStackLocation(Irp);
-        return IoCallDriver(DevExt->AttachedDevice, Irp);
+        return IoCallDriver(DevExt->AttachedToDevice, Irp);
     }
 
     KLErr("Unhandled Device %p Irp %p\n", DeviceObject, Irp);
@@ -230,8 +416,8 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
         return Status;
     }
     DevExt->SymLinkCreated = TRUE;
-    g_CtlDevice = DeviceObject;
-    g_Driver = DriverObject;
+    GetFbDriver()->CtlDevice = DeviceObject;
+    GetFbDriver()->Driver = DriverObject;
     KLInf("DriverEntry Status 0x%x", Status);
 
     return Status;
