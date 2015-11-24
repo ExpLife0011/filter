@@ -32,6 +32,7 @@
 
 #define PTR_BY_RVA(Base, Rva)   ((PVOID)((ULONG_PTR)(Base) + (ULONG_PTR)(Rva)))
 
+#define ARRAY_SIZE(arr) (sizeof(arr)/sizeof((arr)[0]))
 
 FORCEINLINE PVOID NpAlloc(SIZE_T Size, ULONG Tag) {
     return ExAllocatePoolWithTag(NonPagedPool, Size, Tag);

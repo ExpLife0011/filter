@@ -15,7 +15,8 @@ typedef struct _FBDEV_EXT
     BOOLEAN SymLinkCreated;
     PDEVICE_OBJECT TargetDevice;
     PDEVICE_OBJECT AttachedToDevice;
-    volatile LONG  IrpCount;
+    volatile LONG   IrpMjCount[IRP_MJ_MAXIMUM_FUNCTION+1];
+    volatile LONG   IrpCount;
 } FBDEV_EXT, *PFBDEV_EXT;
 
 typedef struct _FBDRIVER {
@@ -278,7 +279,15 @@ VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
             __debugbreak();
 
         KLInf("Going to delete Device %p IrpCount %d", Device, DevExt->IrpCount);
-
+        {
+            int j;
+            
+            for (j = 0; j < ARRAY_SIZE(DevExt->IrpMjCount); j++) {
+                if (DevExt->IrpMjCount[j] != 0) {
+                    KLInf("Device %p IrpMjCount[0x%x]=%d", Device, j, DevExt->IrpMjCount[j]);
+                }
+            }
+        }
         if (DevExt->SymLinkCreated) {
             KLInf("Deleting symlink %wZ", &DevExt->SymLinkName);
             IoDeleteSymbolicLink(&DevExt->SymLinkName);
@@ -376,6 +385,37 @@ DevCtlIrpHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 }
 
 NTSTATUS
+    FbFltPassThrough(PFBDEV_EXT DevExt, PIRP Irp)
+{
+    IoSkipCurrentIrpStackLocation(Irp);
+    return IoCallDriver(DevExt->AttachedToDevice, Irp);
+}
+
+NTSTATUS
+    FbFltIrpHandler(PFBDEV_EXT DevExt, PIRP Irp)
+{
+    PIO_STACK_LOCATION CurrentIrpStack = IoGetCurrentIrpStackLocation(Irp);
+
+    InterlockedIncrement(&DevExt->IrpCount);
+    InterlockedIncrement(&DevExt->IrpMjCount[CurrentIrpStack->MajorFunction]);
+
+    switch (CurrentIrpStack->MajorFunction) {
+    case IRP_MJ_WRITE:
+        goto PassThrough;
+        break;
+    case IRP_MJ_FLUSH_BUFFERS:
+        goto PassThrough;
+        break;
+    default:
+        goto PassThrough;
+        break;
+    }
+
+PassThrough:
+    return FbFltPassThrough(DevExt, Irp);
+}
+
+NTSTATUS
 DriverIrpHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     PFBDEV_EXT DevExt;
@@ -392,9 +432,7 @@ DriverIrpHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (DevExt->AttachedToDevice) {
         KLDbg("FltDevice %p Device %p Irp %p", DeviceObject, DevExt->AttachedToDevice, Irp);
 
-        InterlockedIncrement(&DevExt->IrpCount);
-        IoSkipCurrentIrpStackLocation(Irp);
-        return IoCallDriver(DevExt->AttachedToDevice, Irp);
+        return FbFltIrpHandler(DevExt, Irp);
     }
 
     KLErr("Unhandled Device %p Irp %p\n", DeviceObject, Irp);
