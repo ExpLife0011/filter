@@ -83,32 +83,6 @@ NTSTATUS
     return status;
 }
 
-NTSTATUS GetObjectByName(PUNICODE_STRING ObjName, POBJECT_TYPE ObjectType, PVOID *pObject)
-{
-    PVOID Object;
-    NTSTATUS Status;
-    OBJECT_ATTRIBUTES ObjAttrs;
-    HANDLE ObjectHandle;
-
-    InitializeObjectAttributes(&ObjAttrs, ObjName, OBJ_CASE_INSENSITIVE|OBJ_KERNEL_HANDLE, NULL, NULL);
-
-    Status = ObOpenObjectByName(&ObjAttrs, ObjectType, KernelMode, NULL, 0, NULL, &ObjectHandle);
-    if (!NT_SUCCESS(Status)) {
-        KLErr("Can't open object by name Status 0x%x", Status);
-        return Status;
-    }
-
-    Status = ObReferenceObjectByHandle(ObjectHandle, 0, *IoDriverObjectType, KernelMode, &Object, NULL);
-    if (!NT_SUCCESS(Status)) {
-        KLErr("Can't reference object by handle %p Status 0x%x", ObjectHandle, Status);
-        ZwClose(ObjectHandle);
-        return Status;
-    }
-    ZwClose(ObjectHandle);
-    *pObject = Object;
-    return STATUS_SUCCESS;
-}
-
 NTSTATUS GetNtfsDriverObject(PDRIVER_OBJECT *pDriver)
 {
     UNICODE_STRING ObjName = RTL_CONSTANT_STRING(L"\\FileSystem\\Ntfs");
