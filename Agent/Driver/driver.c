@@ -145,10 +145,8 @@ NTSTATUS FbDriverAttachDevice(PDEVICE_OBJECT DeviceObject)
     for (i = 0; i < 10; i++) {
         Status = IoAttachDeviceToDeviceStackSafe(FltDevice, DeviceObject, &DevExt->AttachedToDevice);
         if (!NT_SUCCESS(Status)) {
-            LARGE_INTEGER WaitInterval;
             KLErr("Can't attach to device %p Status 0x%x", DeviceObject, Status);
-            WaitInterval.QuadPart = -10*1000*1000*10; /* 10ms */
-            KeDelayExecutionThread(KernelMode, FALSE, &WaitInterval);
+            ThreadSleepMs(15);
         } else {
             KLInf("Attached FltDevice %p AttachedTo %p Target %p", FltDevice, DevExt->AttachedToDevice, DeviceObject);
             break;

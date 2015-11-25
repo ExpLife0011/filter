@@ -1,6 +1,8 @@
 #ifndef __FBACKUP_HALLOCATOR_H__
 #define __FBACKUP_HALLOCATOR_H__
+
 #include "inc/base.h"
+#include "inc/helpers.h"
 
 typedef struct _HALLOCATOR {
     ULONG			ChunkSize;
