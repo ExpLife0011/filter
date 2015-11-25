@@ -3,6 +3,7 @@
 #include "inc/mtags.h"
 #include "inc/ntapiex.h"
 #include "inc/fastio.h"
+#include "inc/unload_protection.h"
 #include "h/ioctl.h"
 
 #define FBDEV_EXT_MAGIC 0xCBDACBDA
@@ -23,9 +24,23 @@ typedef struct _FBDRIVER {
     PDRIVER_OBJECT Driver;
     PDEVICE_OBJECT CtlDevice;
     PDRIVER_OBJECT NtfsDriver;
+    UNLOAD_PROTECTION UnloadProtection;
+    KGUARDED_MUTEX Lock;
 } FBDRIVER, *PFBDRIVER;
 
 FBDRIVER g_FbDriver;
+
+FORCEINLINE PFBDRIVER GetFbDriver(VOID) {
+    return &g_FbDriver;
+}
+
+VOID FbDriverInit(VOID)
+{
+    PFBDRIVER FbDriver = GetFbDriver();
+    
+    KeInitializeGuardedMutex(&FbDriver->Lock);
+    UnloadProtectionInit(&FbDriver->UnloadProtection);
+}
 
 FAST_IO_DISPATCH g_FbFastIoDispatch = {
     .SizeOfFastIoDispatch = sizeof(FAST_IO_DISPATCH),
@@ -57,10 +72,6 @@ FAST_IO_DISPATCH g_FbFastIoDispatch = {
     .ReleaseForCcFlush = FbFastIoReleaseForCcFlush,    
     .FastIoQueryOpen  = FbFastIoQueryOpen
 };
-
-FORCEINLINE PFBDRIVER GetFbDriver(VOID) {
-    return &g_FbDriver;
-}
 
 NTSTATUS 
     CompleteIrp( PIRP Irp, NTSTATUS status, ULONG info)
@@ -202,6 +213,7 @@ NTSTATUS FbDriverStart(VOID)
     NTSTATUS Status;
     PDEVICE_OBJECT Device;
 
+    KeAcquireGuardedMutex(&FbDriver->Lock);
     Status = GetNtfsDriverObject(&FbDriver->NtfsDriver);
     KLInf("GetNtfsDriverObject Status 0x%x NtfsDriver %p", Status, FbDriver->NtfsDriver);
     if (!NT_SUCCESS(Status)) {
@@ -225,11 +237,13 @@ NTSTATUS FbDriverStart(VOID)
         ObDereferenceObject(Device);
     }
     NpFree(DeviceObjectList, MTAG_DRV);
+    KeReleaseGuardedMutex(&FbDriver->Lock);
     return STATUS_SUCCESS;
 Fail_get_dev_list:
     ObDereferenceObject(FbDriver->NtfsDriver);
     FbDriver->NtfsDriver = NULL;
 Out:
+    KeReleaseGuardedMutex(&FbDriver->Lock);
     return Status;
 }
 
@@ -237,10 +251,12 @@ VOID FbDriverStop(VOID)
 {
     PFBDRIVER FbDriver = GetFbDriver();
 
+    KeAcquireGuardedMutex(&FbDriver->Lock);
     if (FbDriver->NtfsDriver) {
         ObDereferenceObject(FbDriver->NtfsDriver);
         FbDriver->NtfsDriver = NULL;
     }
+    KeReleaseGuardedMutex(&FbDriver->Lock);
 }
 
 NTSTATUS FbCtlInit(VOID)
@@ -261,6 +277,7 @@ VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
     NTSTATUS Status;
     ULONG i;
     PFBDEV_EXT DevExt;
+    PFBDRIVER FbDriver = GetFbDriver();
 
     KLInf("UnloadRoutine driver %p", DriverObject);
     FbDriverStop();
@@ -272,6 +289,23 @@ VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
         return;
     }
 
+    /* Detach devices */
+    for (i = 0; i < NrDeviceObjects; i++) {
+        Device = DeviceObjectList[i];
+        DevExt = (PFBDEV_EXT)Device->DeviceExtension;
+        if (DevExt->Magic != FBDEV_EXT_MAGIC)
+            __debugbreak();
+        
+        if (DevExt->AttachedToDevice) {
+            KLInf("Going to detach Device %p AttachedToDevice %p", Device, DevExt->AttachedToDevice);
+            IoDetachDevice(DevExt->AttachedToDevice);
+        }
+    }
+
+    /* Wait for all device I/O calm */
+    UnloadProtectionWait(&FbDriver->UnloadProtection);
+
+    /* Delete devices */
     for (i = 0; i < NrDeviceObjects; i++) {
         Device = DeviceObjectList[i];
         DevExt = (PFBDEV_EXT)Device->DeviceExtension;
@@ -288,18 +322,19 @@ VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
                 }
             }
         }
+
         if (DevExt->SymLinkCreated) {
-            KLInf("Deleting symlink %wZ", &DevExt->SymLinkName);
+            KLInf("Deleting Device %p symlink %wZ", Device, &DevExt->SymLinkName);
             IoDeleteSymbolicLink(&DevExt->SymLinkName);
         }
         if (DevExt->AttachedToDevice) {
-            IoDetachDevice(DevExt->AttachedToDevice);
             ObDereferenceObject(DevExt->TargetDevice);
             ObDereferenceObject(DevExt->AttachedToDevice);
         }
         IoDeleteDevice(Device);
         ObDereferenceObject(Device);
     }
+
     NpFree(DeviceObjectList, MTAG_DRV);
 
     KLInf("UnloadRoutine completed");
@@ -419,6 +454,10 @@ NTSTATUS
 DriverIrpHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     PFBDEV_EXT DevExt;
+    PFBDRIVER FbDriver = GetFbDriver();
+    NTSTATUS Status;
+
+    UnloadProtectionAcquire(&FbDriver->UnloadProtection);
 
     DevExt = (PFBDEV_EXT)DeviceObject->DeviceExtension;
     if (DevExt->Magic != FBDEV_EXT_MAGIC)
@@ -426,17 +465,22 @@ DriverIrpHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     if (DeviceObject == GetFbDriver()->CtlDevice) {
         InterlockedIncrement(&DevExt->IrpCount);
-        return DevCtlIrpHandler(DeviceObject, Irp);
+        Status = DevCtlIrpHandler(DeviceObject, Irp);
+        goto Ret;
     }
 
     if (DevExt->AttachedToDevice) {
         KLDbg("FltDevice %p Device %p Irp %p", DeviceObject, DevExt->AttachedToDevice, Irp);
-
-        return FbFltIrpHandler(DevExt, Irp);
+        Status = FbFltIrpHandler(DevExt, Irp);
+        goto Ret;
     }
 
     KLErr("Unhandled Device %p Irp %p\n", DeviceObject, Irp);
-    return CompleteIrp(Irp, STATUS_NOT_SUPPORTED, 0);
+    Status = CompleteIrp(Irp, STATUS_NOT_SUPPORTED, 0);
+
+Ret:
+    UnloadProtectionRelease(&FbDriver->UnloadProtection);
+    return Status;
 }
 
 NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
@@ -449,6 +493,7 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     DPRINT("DriverEntry Driver %p, RegPath %wZ\n", DriverObject, RegistryPath);
 
+    FbDriverInit();
     DriverObject->DriverUnload = DriverUnloadRoutine;
     for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++) {
         DriverObject->MajorFunction[i] = DriverIrpHandler;

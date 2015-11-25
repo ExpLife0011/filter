@@ -34,20 +34,32 @@
 
 #define ARRAY_SIZE(arr) (sizeof(arr)/sizeof((arr)[0]))
 
-FORCEINLINE PVOID NpAlloc(SIZE_T Size, ULONG Tag) {
+FORCEINLINE PVOID NpAlloc(SIZE_T Size, ULONG Tag)
+{
     return ExAllocatePoolWithTag(NonPagedPool, Size, Tag);
 }
 
-FORCEINLINE VOID NpFree(PVOID Addr, ULONG Tag) {
+FORCEINLINE VOID NpFree(PVOID Addr, ULONG Tag)
+{
     ExFreePoolWithTag(Addr, Tag);
 }
 
-FORCEINLINE PVOID PpAlloc(SIZE_T Size, ULONG Tag) {
+FORCEINLINE PVOID PpAlloc(SIZE_T Size, ULONG Tag)
+{
     return ExAllocatePoolWithTag(PagedPool, Size, Tag);
 }
 
-FORCEINLINE VOID PpFree(PVOID Addr, ULONG Tag) {
+FORCEINLINE VOID PpFree(PVOID Addr, ULONG Tag)
+{
     ExFreePoolWithTag(Addr, Tag);
+}
+
+FORCEINLINE VOID ThreadSleepMs(ULONG Millis)
+{
+    LARGE_INTEGER Interval;
+
+    Interval.QuadPart = -(10 * 1000 * (LONG64)Millis);
+    KeDelayExecutionThread(KernelMode, FALSE, &Interval);
 }
 
 #endif
