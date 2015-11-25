@@ -4,6 +4,7 @@
 #include "inc/ntapiex.h"
 #include "inc/fastio.h"
 #include "inc/unload_protection.h"
+#include "inc/helpers.h"
 #include "h/ioctl.h"
 
 #define FBDEV_EXT_MAGIC 0xCBDACBDA
@@ -426,28 +427,65 @@ NTSTATUS
     return IoCallDriver(DevExt->AttachedToDevice, Irp);
 }
 
+NTSTATUS FbFltIrpWrite(PFBDEV_EXT DevExt, PIRP Irp, PIO_STACK_LOCATION IrpSp, PFILE_OBJECT FileObject, BOOLEAN *pbPassThrough)
+{
+    NTSTATUS Status;
+
+    *pbPassThrough = TRUE;
+
+    KLInf("Write: File %p %wZ MN 0x%x Offset 0x%llx Len 0x%x", FileObject, &FileObject->FileName, IrpSp->MinorFunction,
+        IrpSp->Parameters.Write.ByteOffset.QuadPart, IrpSp->Parameters.Write.Length);
+    Status = STATUS_SUCCESS;
+    return Status;
+}
+
+NTSTATUS FbFltIrpFlushBuffers(PFBDEV_EXT DevExt, PIRP Irp, PIO_STACK_LOCATION IrpSp, PFILE_OBJECT FileObject, BOOLEAN *pbPassThrough)
+{
+    NTSTATUS Status;
+
+    *pbPassThrough = TRUE;
+
+    KLInf("FlushBuffers: File %p %wZ MN 0x%x", FileObject, &FileObject->FileName, IrpSp->MinorFunction);
+    Status = STATUS_SUCCESS;
+    return Status;
+}
+
+NTSTATUS FbFltIrpDefault(PFBDEV_EXT DevExt, PIRP Irp, PIO_STACK_LOCATION IrpSp, PFILE_OBJECT FileObject, BOOLEAN *pbPassThrough)
+{
+    NTSTATUS Status;
+
+    *pbPassThrough = TRUE;
+    Status = STATUS_SUCCESS;
+    return Status;
+}
+
 NTSTATUS
     FbFltIrpHandler(PFBDEV_EXT DevExt, PIRP Irp)
 {
     PIO_STACK_LOCATION CurrentIrpStack = IoGetCurrentIrpStackLocation(Irp);
+    PFILE_OBJECT FileObject = CurrentIrpStack->FileObject;
+    NTSTATUS Status;
+    BOOLEAN bPassThrough;
 
     InterlockedIncrement(&DevExt->IrpCount);
     InterlockedIncrement(&DevExt->IrpMjCount[CurrentIrpStack->MajorFunction]);
 
     switch (CurrentIrpStack->MajorFunction) {
     case IRP_MJ_WRITE:
-        goto PassThrough;
+        Status = FbFltIrpWrite(DevExt, Irp, CurrentIrpStack, FileObject, &bPassThrough);
         break;
     case IRP_MJ_FLUSH_BUFFERS:
-        goto PassThrough;
+        Status = FbFltIrpFlushBuffers(DevExt, Irp, CurrentIrpStack, FileObject, &bPassThrough);
         break;
     default:
-        goto PassThrough;
+        Status = FbFltIrpDefault(DevExt, Irp, CurrentIrpStack, FileObject, &bPassThrough);
         break;
     }
 
-PassThrough:
-    return FbFltPassThrough(DevExt, Irp);
+    if (bPassThrough)
+        return FbFltPassThrough(DevExt, Irp);
+
+    return Status;
 }
 
 NTSTATUS

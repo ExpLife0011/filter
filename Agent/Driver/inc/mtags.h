@@ -5,5 +5,6 @@
 
 #define MTAG_KLOG                 '10BF'
 #define MTAG_DRV                  '20BF'
+#define MTAG_GEN                  '30BF'
 
 #endif
