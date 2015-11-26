@@ -9,7 +9,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath)
 #define FBDEV_EXT_MAGIC 0xCBDACBDA
 
 enum {
-    FastIoCheckIfPossibleIndex,
+    FastIoCheckIfPossibleIndex = 0,
     FastIoReadIndex,
     FastIoWriteIndex,
     FastIoQueryBasicInfoIndex,

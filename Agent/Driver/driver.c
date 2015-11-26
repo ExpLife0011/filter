@@ -263,13 +263,26 @@ VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
         if (DevExt->Magic != FBDEV_EXT_MAGIC)
             __debugbreak();
 
-        KLInf("Going to delete Device %p IrpCount %d", Device, DevExt->IrpCount);
+        KLInf("Going to delete Device %p IrpCount %d FastIoCount %d FastIoSuccessCount %d",
+              Device, DevExt->IrpCount, DevExt->FastIoCount, DevExt->FastIoSuccessCount);
         {
             int j;
             
             for (j = 0; j < ARRAY_SIZE(DevExt->IrpMjCount); j++) {
                 if (DevExt->IrpMjCount[j] != 0) {
                     KLInf("Device %p IrpMjCount[0x%x]=%d", Device, j, DevExt->IrpMjCount[j]);
+                }
+            }
+            
+            for (j = 0; j < ARRAY_SIZE(DevExt->FastIoCountByIndex); j++) {
+                if (DevExt->FastIoCountByIndex[j] != 0) {
+                    KLInf("Device %p FastIoCountByIndex[0x%x]=%d", Device, j, DevExt->FastIoCountByIndex[j]);
+                }
+            }
+            
+            for (j = 0; j < ARRAY_SIZE(DevExt->FastIoSuccessCountByIndex); j++) {
+                if (DevExt->FastIoSuccessCountByIndex[j] != 0) {
+                    KLInf("Device %p FastIoSuccessCountByIndex[0x%x]=%d", Device, j, DevExt->FastIoSuccessCountByIndex[j]);
                 }
             }
         }
