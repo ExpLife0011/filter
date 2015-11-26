@@ -1,37 +1,15 @@
-#include "inc/driver.h"
-#include "inc/klog.h"
-#include "inc/mtags.h"
-#include "inc/ntapiex.h"
-#include "inc/fastio.h"
-#include "inc/unload_protection.h"
-#include "inc/helpers.h"
-#include "h/ioctl.h"
-
-#define FBDEV_EXT_MAGIC 0xCBDACBDA
-
-typedef struct _FBDEV_EXT
-{
-    ULONG Magic;
-    PDEVICE_OBJECT DeviceObject;
-    UNICODE_STRING SymLinkName;
-    BOOLEAN SymLinkCreated;
-    PDEVICE_OBJECT TargetDevice;
-    PDEVICE_OBJECT AttachedToDevice;
-    volatile LONG   IrpMjCount[IRP_MJ_MAXIMUM_FUNCTION+1];
-    volatile LONG   IrpCount;
-} FBDEV_EXT, *PFBDEV_EXT;
-
-typedef struct _FBDRIVER {
-    PDRIVER_OBJECT Driver;
-    PDEVICE_OBJECT CtlDevice;
-    PDRIVER_OBJECT NtfsDriver;
-    UNLOAD_PROTECTION UnloadProtection;
-    KGUARDED_MUTEX Lock;
-} FBDRIVER, *PFBDRIVER;
+#include "inc\driver.h"
+#include "inc\klog.h"
+#include "inc\mtags.h"
+#include "inc\ntapiex.h"
+#include "inc\fastio.h"
+#include "inc\unload_protection.h"
+#include "inc\helpers.h"
+#include "h\ioctl.h"
 
 FBDRIVER g_FbDriver;
 
-FORCEINLINE PFBDRIVER GetFbDriver(VOID) {
+PFBDRIVER GetFbDriver(VOID) {
     return &g_FbDriver;
 }
 

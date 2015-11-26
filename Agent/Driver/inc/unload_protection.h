@@ -2,6 +2,7 @@
 #define __FBACKUP_UNLOAD_PROTECTION_H__
 
 #include "inc\base.h"
+#include "inc\helpers.h"
 
 typedef struct _UNLOAD_PROTECTION {
     volatile LONG RefCount;

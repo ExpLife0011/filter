@@ -1,5 +1,12 @@
 #include "inc\fastio.h"
 #include "inc\klog.h"
+#include "inc\driver.h"
+
+#define VALID_FAST_IO_DISPATCH_HANDLER(_FastIoDispatchPtr, _FieldName) \
+    (((_FastIoDispatchPtr) != NULL) && \
+    (((_FastIoDispatchPtr)->SizeOfFastIoDispatch) >= \
+    (FIELD_OFFSET(FAST_IO_DISPATCH, _FieldName) + sizeof(void *))) && \
+    ((_FastIoDispatchPtr)->_FieldName != NULL))
 
 BOOLEAN
 FbFastIoCheckIfPossible(
@@ -13,8 +20,32 @@ FbFastIoCheckIfPossible(
     _In_ PDEVICE_OBJECT DeviceObject
     )
 {
+    PFBDEV_EXT DevExt;
+    PFBDRIVER FbDriver = GetFbDriver();
+    BOOLEAN Result = FALSE;
+    PFAST_IO_DISPATCH FastIoDispatch;
+    PDEVICE_OBJECT NextDevice;
+
+    UnloadProtectionAcquire(&FbDriver->UnloadProtection);
     KLDbg("FastIo");
-    return FALSE;
+
+    DevExt = (PFBDEV_EXT)DeviceObject->DeviceExtension;
+    if (DevExt->Magic != FBDEV_EXT_MAGIC)
+        __debugbreak();
+    InterlockedIncrement(&DevExt->FastIoCount);
+    InterlockedIncrement(&DevExt->FastIoCountByIndex[FastIoCheckIfPossibleIndex]);
+    NextDevice = DevExt->AttachedToDevice;
+    FastIoDispatch = NextDevice->DriverObject->FastIoDispatch;
+    if (VALID_FAST_IO_DISPATCH_HANDLER(FastIoDispatch, FastIoCheckIfPossible)) {
+        Result = FastIoDispatch->FastIoCheckIfPossible(FileObject, FileOffset, Length,
+                                                       Wait, LockKey, CheckForReadOperation, IoStatus, NextDevice);
+    }
+    if (Result)
+        InterlockedIncrement(&DevExt->FastIoSuccessCount);
+    if (Result)
+        InterlockedIncrement(&DevExt->FastIoSuccessCountByIndex[FastIoCheckIfPossibleIndex]);
+    UnloadProtectionRelease(&FbDriver->UnloadProtection);
+    return Result;
 }
 
 BOOLEAN
