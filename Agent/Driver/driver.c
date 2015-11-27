@@ -13,12 +13,17 @@ PFBDRIVER GetFbDriver(VOID) {
     return &g_FbDriver;
 }
 
-VOID FbDriverInit(VOID)
+NTSTATUS FbDriverInit(PFBDRIVER FbDriver)
 {
-    PFBDRIVER FbDriver = GetFbDriver();
-    
-    KeInitializeGuardedMutex(&FbDriver->Lock);
     UnloadProtectionInit(&FbDriver->UnloadProtection);
+    return WorkerStart(&FbDriver->MainWorker);
+}
+
+VOID FbDriverDeinit(PFBDRIVER FbDriver)
+{
+    WorkerStop(&FbDriver->MainWorker);
+    if (FbDriver->NtfsDriver)
+        ObDereferenceObject(FbDriver->NtfsDriver);
 }
 
 FAST_IO_DISPATCH g_FbFastIoDispatch = {
@@ -190,16 +195,14 @@ VOID FbFltDetachDevice(PDEVICE_OBJECT SourceDevice, PDEVICE_OBJECT TargetDevice)
     FbDevExtDereference(DevExt);
 }
 
-NTSTATUS FbDriverStart(VOID)
+NTSTATUS FbDriverFltStartWork(PFBDRIVER FbDriver)
 {
-    PFBDRIVER FbDriver = GetFbDriver();
     ULONG NrDeviceObjects;
     PDEVICE_OBJECT *DeviceObjectList;
     ULONG i;
     NTSTATUS Status;
     PDEVICE_OBJECT Device;
 
-    KeAcquireGuardedMutex(&FbDriver->Lock);
     Status = GetNtfsDriverObject(&FbDriver->NtfsDriver);
     KLInf("GetNtfsDriverObject Status 0x%x NtfsDriver %p", Status, FbDriver->NtfsDriver);
     if (!NT_SUCCESS(Status)) {
@@ -223,37 +226,31 @@ NTSTATUS FbDriverStart(VOID)
         ObDereferenceObject(Device);
     }
     NpFree(DeviceObjectList, MTAG_DRV);
-    KeReleaseGuardedMutex(&FbDriver->Lock);
     return STATUS_SUCCESS;
 FailGetDevList:
     ObDereferenceObject(FbDriver->NtfsDriver);
     FbDriver->NtfsDriver = NULL;
 Out:
-    KeReleaseGuardedMutex(&FbDriver->Lock);
     return Status;
 }
 
-VOID FbDriverStop(VOID)
+NTSTATUS FbDriverFltStart(PFBDRIVER FbDriver)
 {
-    PFBDRIVER FbDriver = GetFbDriver();
+    return WorkerExec(&FbDriver->MainWorker, FbDriverFltStartWork, FbDriver, TRUE);
+}
 
-    KeAcquireGuardedMutex(&FbDriver->Lock);
+NTSTATUS FbDriverFltStopWork(PFBDRIVER FbDriver)
+{
     if (FbDriver->NtfsDriver) {
         ObDereferenceObject(FbDriver->NtfsDriver);
         FbDriver->NtfsDriver = NULL;
     }
-    KeReleaseGuardedMutex(&FbDriver->Lock);
-}
-
-NTSTATUS FbCtlInit(VOID)
-{
-    return FbDriverStart();
-}
-
-NTSTATUS FbCtlRelease(VOID)
-{
-    FbDriverStop();
     return STATUS_SUCCESS;
+}
+
+NTSTATUS FbDriverFltStop(PFBDRIVER FbDriver)
+{
+    return WorkerExec(&FbDriver->MainWorker, FbDriverFltStopWork, FbDriver, TRUE);
 }
 
 VOID FbFtlDevExtDumpStats(PFBDEV_EXT DevExt)
@@ -316,7 +313,6 @@ VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
     PFBDRIVER FbDriver = GetFbDriver();
 
     KLInf("UnloadRoutine driver %p", DriverObject);
-    FbDriverStop();
 
     Status = GetDriverDevicesList(DriverObject, &DeviceObjectList, &NrDeviceObjects);
     if (!NT_SUCCESS(Status)) {
@@ -344,6 +340,7 @@ VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
     }
 
     NpFree(DeviceObjectList, MTAG_DRV);
+    FbDriverDeinit(FbDriver);
 
     KLInf("UnloadRoutine completed");
     KLogDeinit();
@@ -352,6 +349,7 @@ VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
 NTSTATUS DevCtlCtlHandler( IN PDEVICE_OBJECT Device, IN PIRP Irp )
 {
     NTSTATUS Status = STATUS_SUCCESS;
+    PFBDRIVER FbDriver = GetFbDriver();
     PIO_STACK_LOCATION IrpStack = IoGetCurrentIrpStackLocation(Irp);
     ULONG ControlCode = IrpStack->Parameters.DeviceIoControl.IoControlCode;
     ULONG method = ControlCode & 0x3;
@@ -360,7 +358,6 @@ NTSTATUS DevCtlCtlHandler( IN PDEVICE_OBJECT Device, IN PIRP Irp )
     ULONG OutputLength = IrpStack->Parameters.DeviceIoControl.OutputBufferLength;
     PVOID Buffer = Irp->AssociatedIrp.SystemBuffer;
 
-    KeEnterGuardedRegion();
     KLInf("Device %p, Ctl 0x%x", Device, ControlCode);
     if (OutputLength < InputLength) {
         KLErr("Invalid OutputLen 0x%x vs InputLen 0x%x", OutputLength, InputLength);
@@ -369,11 +366,11 @@ NTSTATUS DevCtlCtlHandler( IN PDEVICE_OBJECT Device, IN PIRP Irp )
     }
 
     switch (ControlCode) {
-    case IOCTL_FBACKUP_INIT:  
-        Status = FbCtlInit();
+    case IOCTL_FBACKUP_FLT_START:  
+        Status = FbDriverFltStart(FbDriver);
         break;
-    case IOCTL_FBACKUP_RELEASE:
-        Status = FbCtlRelease();
+    case IOCTL_FBACKUP_FLT_STOP:
+        Status = FbDriverFltStop(FbDriver);
         break;
     case IOCTL_FBACKUP_TEST:
         Status = STATUS_NOT_SUPPORTED;
@@ -392,7 +389,6 @@ NTSTATUS DevCtlCtlHandler( IN PDEVICE_OBJECT Device, IN PIRP Irp )
 Done:
     KLInf("Device %p Ctl 0x%x Bytes 0x%x, Status 0x%x", Device, ControlCode, ResultLength, Status);
     Status = CompleteIrp(Irp, Status, ResultLength);
-    KeLeaveGuardedRegion();
     return Status;
 }
 
@@ -565,26 +561,31 @@ Ret:
 NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
                      IN PUNICODE_STRING RegistryPath)
 {
-    NTSTATUS Status = STATUS_SUCCESS;
+    NTSTATUS Status;
     PDEVICE_OBJECT  DeviceObject = NULL;
     UNICODE_STRING  DeviceName;
     ULONG i;
+    PFBDRIVER FbDriver = GetFbDriver();
 
     DPRINT("DriverEntry Driver %p, RegPath %wZ\n", DriverObject, RegistryPath);
+    Status = KLogInit();
+    if (!NT_SUCCESS(Status)) {
+        DPRINT("DriverLibInit failure Status 0x%x\n", Status);
+        return Status;
+    }
 
-    FbDriverInit();
+    Status = FbDriverInit(FbDriver);
+    if (!NT_SUCCESS(Status)) {
+        KLErr("FbDriverInit failure Status 0x%x", Status);
+        goto FailFbDriverInit;
+    }
+
     DriverObject->DriverUnload = DriverUnloadRoutine;
     for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++) {
         DriverObject->MajorFunction[i] = DriverIrpHandler;
     }
     DriverObject->FastIoDispatch = &g_FbFastIoDispatch;
     RtlInitUnicodeString( &DeviceName, FBACKUP_DRV_NT_DEVICE_NAME_W);
-
-    Status = KLogInit();
-    if (!NT_SUCCESS(Status)) {
-        DPRINT("DriverLibInit failure\n");
-        return Status;
-    }
 
     KLInf("Driver %p, RegPath %wZ", DriverObject, RegistryPath);
 
@@ -597,8 +598,8 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
         &DeviceObject);
 
     if(!NT_SUCCESS(Status)) {
-        KLogDeinit();
-        return Status;
+        KLErr("Can't create ctl device Status 0x%x", Status);
+        goto FailCreateDevice;
     }
 
     PFBDEV_EXT DevExt = (PFBDEV_EXT)DeviceObject->DeviceExtension;
@@ -609,15 +610,23 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     RtlInitUnicodeString(&DevExt->SymLinkName, FBACKUP_DRV_DOS_DEVICE_NAME_W );
 
     Status = IoCreateSymbolicLink( &DevExt->SymLinkName, &DeviceName );
-    if (!NT_SUCCESS(Status)) { 
-        IoDeleteDevice( DeviceObject );
-        KLogDeinit();
-        return Status;
+    if (!NT_SUCCESS(Status)) {
+        KLErr("Can't create symlink Status 0x%x", Status);
+        goto FailCreateSymLink;
     }
+
     DevExt->SymLinkCreated = TRUE;
-    GetFbDriver()->CtlDevice = DeviceObject;
-    GetFbDriver()->Driver = DriverObject;
+    FbDriver->CtlDevice = DeviceObject;
+    FbDriver->Driver = DriverObject;
     KLInf("DriverEntry Status 0x%x", Status);
 
+    return Status;
+FailCreateSymLink:
+    IoDeleteDevice(DeviceObject);
+FailCreateDevice:
+    FbDriverDeinit(FbDriver);
+FailFbDriverInit:
+    KLInf("DriverEntry Status 0x%x", Status);
+    KLogDeinit();
     return Status;
 }

@@ -42,13 +42,13 @@ def test_run(host, bsod = False, test = False):
         for f in files:
             sh.file_put(os.path.join(b_path, f), os.path.join(r_path, f))
         sh.cmd(os.path.join(r_path, client) + " load " + os.path.join(r_path, driver))
-        sh.cmd(os.path.join(r_path, client) + " init")
+        sh.cmd(os.path.join(r_path, client) + " fltstart")
         if test:
             sh.cmd(os.path.join(r_path, client) + " test")
         time.sleep(5)
         if bsod:
             sh.cmd(os.path.join(r_path, client) + " bugcheck")
-        sh.cmd(os.path.join(r_path, client) + " release")
+        sh.cmd(os.path.join(r_path, client) + " fltstop")
     except Exception as e:
         log.error('Exception=' + str(e))
     finally:

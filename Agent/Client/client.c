@@ -29,7 +29,7 @@ CDrvClose(
     return CloseHandle(hDevice);
 }
 
-DWORD NTAPI CDrvCtlInit()
+DWORD NTAPI CDrvCtlFltStart()
 {
     HANDLE hDevice = NULL;
     DWORD BytesReturned;
@@ -41,13 +41,13 @@ DWORD NTAPI CDrvCtlInit()
     }
 
     if( !DeviceIoControl(hDevice,
-        IOCTL_FBACKUP_INIT,
+        IOCTL_FBACKUP_FLT_START,
         NULL, 0,
         NULL, 0,
         &BytesReturned,
         NULL )  )
     {
-        printf( "Error in IOCTL_FBACKUP_INIT %d\n", GetLastError());
+        printf( "Error in IOCTL_FBACKUP_FLT_START %d\n", GetLastError());
         Result = -1;
     } else {
         Result = 0;
@@ -57,7 +57,7 @@ DWORD NTAPI CDrvCtlInit()
     return Result;
 }
 
-DWORD NTAPI CDrvCtlRelease()
+DWORD NTAPI CDrvCtlFltStop()
 {
     HANDLE hDevice = NULL;
     DWORD BytesReturned;
@@ -69,13 +69,13 @@ DWORD NTAPI CDrvCtlRelease()
     }
 
     if( !DeviceIoControl(hDevice,
-        IOCTL_FBACKUP_RELEASE,
+        IOCTL_FBACKUP_FLT_STOP,
         NULL, 0,
         NULL, 0,
         &BytesReturned,
         NULL )  )
     {
-        printf( "Error in IOCTL_FBACKUP_RELEASE %d\n", GetLastError());
+        printf( "Error in IOCTL_FBACKUP_FLT_STOP %d\n", GetLastError());
         Result = -1;
     } else {
         Result = 0;

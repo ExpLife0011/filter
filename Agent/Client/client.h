@@ -11,7 +11,7 @@ DWORD NTAPI CDrvCtlEcho();
 DWORD NTAPI CDrvLoad(WCHAR *BinPath);
 DWORD NTAPI CDrvUnload();
 
-DWORD NTAPI CDrvCtlInit();
-DWORD NTAPI CDrvCtlRelease();
+DWORD NTAPI CDrvCtlFltStart();
+DWORD NTAPI CDrvCtlFltStop();
 
 #endif

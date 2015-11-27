@@ -3,6 +3,7 @@
 
 #include "inc\base.h"
 #include "inc\unload_protection.h"
+#include "inc\worker.h"
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath);
 
@@ -70,7 +71,7 @@ typedef struct _FBDRIVER {
     PDEVICE_OBJECT      CtlDevice;
     PDRIVER_OBJECT      NtfsDriver;
     UNLOAD_PROTECTION   UnloadProtection;
-    KGUARDED_MUTEX      Lock;
+    WORKER              MainWorker;
 } FBDRIVER, *PFBDRIVER;
 
 PFBDRIVER GetFbDriver(VOID);

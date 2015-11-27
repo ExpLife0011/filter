@@ -32,10 +32,10 @@ int wmain(int argc, WCHAR* argv[])
         err = CDrvLoad(BinPath);
     } else if (IsCmdEqual(cmd, L"unload")) {
         err = CDrvUnload();
-    } else if (IsCmdEqual(cmd, L"init")) {
-        err = CDrvCtlInit();
-    } else if (IsCmdEqual(cmd, L"release")) {
-        err = CDrvCtlRelease();
+    } else if (IsCmdEqual(cmd, L"fltstart")) {
+        err = CDrvCtlFltStart();
+    } else if (IsCmdEqual(cmd, L"fltstop")) {
+        err = CDrvCtlFltStop();
     } else if (IsCmdEqual(cmd, L"echo")) {
         err = CDrvCtlEcho();
     } else if (IsCmdEqual(cmd, L"bugcheck")) {
