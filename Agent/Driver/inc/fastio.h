@@ -15,7 +15,6 @@ FbFastIoCheckIfPossible(
     _In_ PDEVICE_OBJECT DeviceObject
     );
 
-
 BOOLEAN
 FbFastIoRead(
     _In_ PFILE_OBJECT FileObject,
@@ -39,8 +38,6 @@ FbFastIoWrite(
     _Out_ PIO_STATUS_BLOCK IoStatus,
     _In_ PDEVICE_OBJECT DeviceObject
     );
-
-
 
 BOOLEAN
 FbFastIoQueryBasicInfo(
@@ -117,18 +114,6 @@ FbFastIoDeviceControl(
     );
 
 VOID
-FbFastIoAcquireFile(
-    _In_ PFILE_OBJECT FileObject
-    );
-
-VOID
-FbFastIoReleaseFile(
-    _In_ PFILE_OBJECT FileObject
-    );
-
-
-
-VOID
 FbFastIoDetachDevice(
     _In_ PDEVICE_OBJECT SourceDevice,
     _In_ PDEVICE_OBJECT TargetDevice
@@ -140,6 +125,13 @@ FbFastIoQueryNetworkOpenInfo(
     _In_ BOOLEAN Wait,
     _Out_ PFILE_NETWORK_OPEN_INFORMATION Buffer,
     _Out_ PIO_STATUS_BLOCK IoStatus,
+    _In_ PDEVICE_OBJECT DeviceObject
+    );
+
+BOOLEAN
+FbFastIoQueryOpen(
+    _Inout_ PIRP Irp,
+    _Out_ PFILE_NETWORK_OPEN_INFORMATION NetworkInformation,
     _In_ PDEVICE_OBJECT DeviceObject
     );
 
@@ -180,35 +172,6 @@ FbFastIoMdlWriteComplete(
     _In_ PMDL MdlChain,
     _In_ PDEVICE_OBJECT DeviceObject
     );
-
-
-NTSTATUS
-FbFastIoAcquireForModWrite(
-    _In_ PFILE_OBJECT FileObject,
-    _In_ PLARGE_INTEGER EndingOffset,
-    _Out_ PERESOURCE *ResourceToRelease,
-    _In_ PDEVICE_OBJECT DeviceObject
-             );
-
-NTSTATUS
-FbFastIoReleaseForModWrite(
-    _In_ PFILE_OBJECT FileObject,
-    _In_ PERESOURCE ResourceToRelease,
-    _In_ PDEVICE_OBJECT DeviceObject
-             );
-
-NTSTATUS
-FbFastIoAcquireForCcFlush(
-    _In_ PFILE_OBJECT FileObject,
-    _In_ PDEVICE_OBJECT DeviceObject
-             );
-
-
-NTSTATUS
-FbFastIoReleaseForCcFlush(
-    _In_ PFILE_OBJECT FileObject,
-    _In_ PDEVICE_OBJECT DeviceObject
-             );
 
 BOOLEAN
 FbFastIoReadCompressed(
@@ -253,11 +216,27 @@ FbFastIoMdlWriteCompleteCompressed(
     _In_ PDEVICE_OBJECT DeviceObject
     );
 
-BOOLEAN
-FbFastIoQueryOpen(
-    _Inout_ PIRP Irp,
-    _Out_ PFILE_NETWORK_OPEN_INFORMATION NetworkInformation,
+VOID
+FbFastIoAcquireFileForNtCreateSection(
+    _In_ PFILE_OBJECT FileObject
+    );
+
+NTSTATUS
+FbFastIoReleaseForCcFlush(
+    _In_ PFILE_OBJECT FileObject,
     _In_ PDEVICE_OBJECT DeviceObject
+             );
+
+NTSTATUS
+FbFastIoReleaseForModWrite(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PERESOURCE ResourceToRelease,
+    _In_ PDEVICE_OBJECT DeviceObject
+             );
+
+VOID
+FbFastIoReleaseFileForNtCreateSection(
+    _In_ PFILE_OBJECT FileObject
     );
 
 #endif

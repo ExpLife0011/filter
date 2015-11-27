@@ -441,30 +441,13 @@ UnlockReturn:
 }
 
 VOID
-FbFastIoAcquireFile(
-    _In_ PFILE_OBJECT FileObject
-    )
-{
-    KLErr("Unimplemented");
-    return;
-}
-
-VOID
-FbFastIoReleaseFile(
-    _In_ PFILE_OBJECT FileObject
-    )
-{
-    KLErr("Unimplemented");
-    return;
-}
-
-VOID
 FbFastIoDetachDevice(
     _In_ PDEVICE_OBJECT SourceDevice,
     _In_ PDEVICE_OBJECT TargetDevice
     )
 {
-    KLErr("Unimplemented");
+    FbFltDetachDevice(SourceDevice, TargetDevice);
+    FbDriverDeviceDelete(SourceDevice);
     return;
 }
 
@@ -671,49 +654,6 @@ FbFastIoMdlWriteComplete(
 UnlockReturn:
     UnloadProtectionRelease(&FbDriver->UnloadProtection);
     return Result;
-}
-
-NTSTATUS
-FbFastIoAcquireForModWrite(
-    _In_ PFILE_OBJECT FileObject,
-    _In_ PLARGE_INTEGER EndingOffset,
-    _Out_ PERESOURCE *ResourceToRelease,
-    _In_ PDEVICE_OBJECT DeviceObject
-             )
-{
-    KLErr("Unimplemented");
-    return STATUS_NOT_SUPPORTED;
-}
-
-NTSTATUS
-FbFastIoReleaseForModWrite(
-    _In_ PFILE_OBJECT FileObject,
-    _In_ PERESOURCE ResourceToRelease,
-    _In_ PDEVICE_OBJECT DeviceObject
-             )
-{
-    KLErr("Unimplemented");
-    return STATUS_NOT_SUPPORTED;
-}
-
-NTSTATUS
-FbFastIoAcquireForCcFlush(
-    _In_ PFILE_OBJECT FileObject,
-    _In_ PDEVICE_OBJECT DeviceObject
-             )
-{
-    KLErr("Unimplemented");
-    return STATUS_NOT_SUPPORTED;
-}
-
-NTSTATUS
-FbFastIoReleaseForCcFlush(
-    _In_ PFILE_OBJECT FileObject,
-    _In_ PDEVICE_OBJECT DeviceObject
-             )
-{
-    KLErr("Unimplemented");
-    return STATUS_NOT_SUPPORTED;
 }
 
 BOOLEAN
@@ -923,4 +863,71 @@ FbFastIoQueryOpen(
 UnlockReturn:
     UnloadProtectionRelease(&FbDriver->UnloadProtection);
     return Result;
+}
+
+NTSTATUS
+FbFastIoAcquireForCcFlush(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PDEVICE_OBJECT DeviceObject
+             )
+{
+    KLErr("Unimplemented");
+    __debugbreak();
+    return STATUS_NOT_SUPPORTED;
+}
+
+NTSTATUS
+FbFastIoAcquireForModWrite(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PLARGE_INTEGER EndingOffset,
+    _Out_ PERESOURCE *ResourceToRelease,
+    _In_ PDEVICE_OBJECT DeviceObject
+             )
+{
+    KLErr("Unimplemented");
+    __debugbreak();
+    return STATUS_NOT_SUPPORTED;
+}
+
+VOID
+FbFastIoAcquireFileForNtCreateSection(
+    _In_ PFILE_OBJECT FileObject
+    )
+{
+    KLErr("Unimplemented");
+    __debugbreak();
+    return;
+}
+
+NTSTATUS
+FbFastIoReleaseForCcFlush(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PDEVICE_OBJECT DeviceObject
+             )
+{
+    KLErr("Unimplemented");
+    __debugbreak();
+    return STATUS_NOT_SUPPORTED;
+}
+
+NTSTATUS
+FbFastIoReleaseForModWrite(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PERESOURCE ResourceToRelease,
+    _In_ PDEVICE_OBJECT DeviceObject
+             )
+{
+    KLErr("Unimplemented");
+    __debugbreak();
+    return STATUS_NOT_SUPPORTED;
+}
+
+VOID
+FbFastIoReleaseFileForNtCreateSection(
+    _In_ PFILE_OBJECT FileObject
+    )
+{
+    KLErr("Unimplemented");
+    __debugbreak();
+    return;
 }

@@ -33,11 +33,9 @@ FAST_IO_DISPATCH g_FbFastIoDispatch = {
     .FastIoUnlockAll  = FbFastIoUnlockAll,
     .FastIoUnlockAllByKey = FbFastIoUnlockAllByKey,
     .FastIoDeviceControl = FbFastIoDeviceControl,
-    .AcquireFileForNtCreateSection = FbFastIoAcquireFile,
-    .ReleaseFileForNtCreateSection = FbFastIoReleaseFile,
     .FastIoDetachDevice = FbFastIoDetachDevice,
     .FastIoQueryNetworkOpenInfo = FbFastIoQueryNetworkOpenInfo,
-    .AcquireForModWrite = FbFastIoAcquireForModWrite,
+    .FastIoQueryOpen  = FbFastIoQueryOpen,
     .MdlRead = FbFastIoMdlRead,
     .MdlReadComplete = FbFastIoMdlReadComplete,
     .PrepareMdlWrite = FbFastIoPrepareMdlWrite,  
@@ -46,10 +44,12 @@ FAST_IO_DISPATCH g_FbFastIoDispatch = {
     .FastIoWriteCompressed = FbFastIoWriteCompressed,    
     .MdlReadCompleteCompressed = FbFastIoMdlReadCompleteCompressed,
     .MdlWriteCompleteCompressed = FbFastIoMdlWriteCompleteCompressed,
-    .ReleaseForModWrite = FbFastIoReleaseForModWrite,
-    .AcquireForCcFlush = FbFastIoAcquireForCcFlush,
-    .ReleaseForCcFlush = FbFastIoReleaseForCcFlush,    
-    .FastIoQueryOpen  = FbFastIoQueryOpen
+    .AcquireForCcFlush = NULL,
+    .AcquireFileForNtCreateSection = NULL,
+    .AcquireForModWrite = NULL,
+    .ReleaseForCcFlush = NULL,    
+    .ReleaseFileForNtCreateSection = NULL,
+    .ReleaseForModWrite = NULL,
 };
 
 NTSTATUS 
@@ -103,7 +103,16 @@ NTSTATUS GetDriverDevicesList(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT **pDev
     return STATUS_SUCCESS;
 }
 
-NTSTATUS FbDriverAttachDevice(PDEVICE_OBJECT DeviceObject)
+VOID FbDevExtInit(PFBDEV_EXT DevExt, PDEVICE_OBJECT DeviceObject)
+{
+    RtlZeroMemory(DevExt, sizeof(*DevExt));
+    DevExt->Magic = FBDEV_EXT_MAGIC;
+    DevExt->DeviceObject = DeviceObject;
+    KeInitializeEvent(&DevExt->ReleasedEvent, NotificationEvent, FALSE);
+    DevExt->RefCount = 1;
+}
+
+NTSTATUS FbFltAttachDevice(PDEVICE_OBJECT DeviceObject)
 {
     NTSTATUS Status;
     PFBDRIVER FbDriver = GetFbDriver();
@@ -117,9 +126,7 @@ NTSTATUS FbDriverAttachDevice(PDEVICE_OBJECT DeviceObject)
         return Status;
     }
     DevExt = (PFBDEV_EXT)FltDevice->DeviceExtension;
-    RtlZeroMemory(DevExt, sizeof(*DevExt));
-    DevExt->DeviceObject = DeviceObject;
-    DevExt->Magic = FBDEV_EXT_MAGIC;
+    FbDevExtInit(DevExt, FltDevice);
     for (i = 0; i < 10; i++) {
         Status = IoAttachDeviceToDeviceStackSafe(FltDevice, DeviceObject, &DevExt->AttachedToDevice);
         if (!NT_SUCCESS(Status)) {
@@ -136,15 +143,22 @@ NTSTATUS FbDriverAttachDevice(PDEVICE_OBJECT DeviceObject)
         IoDeleteDevice(FltDevice);
         return Status;
     }
+    FbDevExtReference(DevExt);
 
     if (FlagOn(DevExt->AttachedToDevice->Flags, DO_BUFFERED_IO))
         SetFlag(FltDevice->Flags, DO_BUFFERED_IO);
+    else
+        ClearFlag(FltDevice->Flags, DO_BUFFERED_IO);
 
     if (FlagOn(DevExt->AttachedToDevice->Flags, DO_DIRECT_IO))
-        SetFlag(FltDevice->Flags, DO_BUFFERED_IO);
+        SetFlag(FltDevice->Flags, DO_DIRECT_IO);
+    else
+        ClearFlag(FltDevice->Flags, DO_DIRECT_IO);
 
     if (FlagOn(DevExt->AttachedToDevice->Characteristics, FILE_DEVICE_SECURE_OPEN))
         SetFlag(FltDevice->Characteristics, FILE_DEVICE_SECURE_OPEN);
+    else
+        ClearFlag(FltDevice->Characteristics, FILE_DEVICE_SECURE_OPEN);
 
     DevExt->TargetDevice = DeviceObject;
     ObReferenceObject(DevExt->TargetDevice);
@@ -153,6 +167,22 @@ NTSTATUS FbDriverAttachDevice(PDEVICE_OBJECT DeviceObject)
     ClearFlag(FltDevice->Flags, DO_DEVICE_INITIALIZING);
 
     return Status;
+}
+
+VOID FbFltDetachDevice(PDEVICE_OBJECT SourceDevice, PDEVICE_OBJECT TargetDevice)
+{
+    PFBDEV_EXT DevExt = FbDevExtByDevice(SourceDevice);
+
+    KLInf("Going to detach Device %p AttachedToDevice %p TargetDevice %p",
+          SourceDevice, DevExt->AttachedToDevice, TargetDevice);
+
+    if (TargetDevice) {
+        if (TargetDevice != DevExt->AttachedToDevice)
+            __debugbreak();
+        IoDetachDevice(TargetDevice);
+    } else
+        IoDetachDevice(DevExt->AttachedToDevice);
+    FbDevExtDereference(DevExt);
 }
 
 NTSTATUS FbDriverStart(VOID)
@@ -175,13 +205,13 @@ NTSTATUS FbDriverStart(VOID)
     if (!NT_SUCCESS(Status)) {
         KLErr("Can't get devices list for driver %p Status 0x%x", GetFbDriver()->NtfsDriver, Status);
         __debugbreak();
-        goto Fail_get_dev_list;
+        goto FailGetDevList;
     }
 
     for (i = 0; i < NrDeviceObjects; i++) {
         Device = DeviceObjectList[i];
         KLInf("Ntfs device %p", Device);
-        Status  = FbDriverAttachDevice(Device);
+        Status  = FbFltAttachDevice(Device);
         if (!NT_SUCCESS(Status)) {
             KLErr("FbDriverAttachDevice Status 0x%x", Status);
         }
@@ -190,7 +220,7 @@ NTSTATUS FbDriverStart(VOID)
     NpFree(DeviceObjectList, MTAG_DRV);
     KeReleaseGuardedMutex(&FbDriver->Lock);
     return STATUS_SUCCESS;
-Fail_get_dev_list:
+FailGetDevList:
     ObDereferenceObject(FbDriver->NtfsDriver);
     FbDriver->NtfsDriver = NULL;
 Out:
@@ -221,6 +251,56 @@ NTSTATUS FbCtlRelease(VOID)
     return STATUS_SUCCESS;
 }
 
+VOID FbFtlDevExtDumpStats(PFBDEV_EXT DevExt)
+{
+    int j;
+
+    KLInf("Device %p DevExt %p IrpCount %d IrpCompletionCount %d FastIoCount %d FastIoSuccessCount %d",
+          DevExt->DeviceObject, DevExt, DevExt->IrpCount, DevExt->IrpCompletionCount,
+          DevExt->FastIoCount, DevExt->FastIoSuccessCount);
+
+    for (j = 0; j < ARRAY_SIZE(DevExt->IrpMjCount); j++) {
+        if (DevExt->IrpMjCount[j] != 0) {
+            KLInf("Device %p IrpMjCount[0x%x]=%d", DevExt->DeviceObject, j, DevExt->IrpMjCount[j]);
+        }
+    }
+    
+    for (j = 0; j < ARRAY_SIZE(DevExt->FastIoCountByIndex); j++) {
+        if (DevExt->FastIoCountByIndex[j] != 0) {
+            KLInf("Device %p FastIoCountByIndex[0x%x]=%d", DevExt->DeviceObject, j, DevExt->FastIoCountByIndex[j]);
+        }
+    }
+    
+    for (j = 0; j < ARRAY_SIZE(DevExt->FastIoSuccessCountByIndex); j++) {
+        if (DevExt->FastIoSuccessCountByIndex[j] != 0) {
+            KLInf("Device %p FastIoSuccessCountByIndex[0x%x]=%d", DevExt->DeviceObject, j, DevExt->FastIoSuccessCountByIndex[j]);
+        }
+    }
+}
+
+VOID FbDriverDeviceDelete(PDEVICE_OBJECT Device)
+{
+    PFBDEV_EXT DevExt;
+
+    DevExt = FbDevExtByDevice(Device);
+
+    KLInf("Going to delete Device %p DevExt %p", Device, DevExt);
+    FbDevExtDereference(DevExt);
+    FbDevExtWaitRelease(DevExt);
+    FbFtlDevExtDumpStats(DevExt);
+
+    if (DevExt->SymLinkCreated) {
+        KLInf("Deleting Device %p symlink %wZ", Device, &DevExt->SymLinkName);
+        IoDeleteSymbolicLink(&DevExt->SymLinkName);
+    }
+
+    if (DevExt->AttachedToDevice) {
+        ObDereferenceObject(DevExt->TargetDevice);
+        ObDereferenceObject(DevExt->AttachedToDevice);
+    }
+    IoDeleteDevice(Device);
+}
+
 VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
 {
     ULONG NrDeviceObjects;
@@ -243,14 +323,9 @@ VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
     /* Detach devices */
     for (i = 0; i < NrDeviceObjects; i++) {
         Device = DeviceObjectList[i];
-        DevExt = (PFBDEV_EXT)Device->DeviceExtension;
-        if (DevExt->Magic != FBDEV_EXT_MAGIC)
-            __debugbreak();
-        
-        if (DevExt->AttachedToDevice) {
-            KLInf("Going to detach Device %p AttachedToDevice %p", Device, DevExt->AttachedToDevice);
-            IoDetachDevice(DevExt->AttachedToDevice);
-        }
+        DevExt = FbDevExtByDevice(Device);
+        if (DevExt->AttachedToDevice != NULL)
+            FbFltDetachDevice(Device, NULL);
     }
 
     /* Wait for all device I/O calm */
@@ -259,43 +334,7 @@ VOID DriverUnloadRoutine(IN PDRIVER_OBJECT DriverObject)
     /* Delete devices */
     for (i = 0; i < NrDeviceObjects; i++) {
         Device = DeviceObjectList[i];
-        DevExt = (PFBDEV_EXT)Device->DeviceExtension;
-        if (DevExt->Magic != FBDEV_EXT_MAGIC)
-            __debugbreak();
-
-        KLInf("Going to delete Device %p IrpCount %d FastIoCount %d FastIoSuccessCount %d",
-              Device, DevExt->IrpCount, DevExt->FastIoCount, DevExt->FastIoSuccessCount);
-        {
-            int j;
-            
-            for (j = 0; j < ARRAY_SIZE(DevExt->IrpMjCount); j++) {
-                if (DevExt->IrpMjCount[j] != 0) {
-                    KLInf("Device %p IrpMjCount[0x%x]=%d", Device, j, DevExt->IrpMjCount[j]);
-                }
-            }
-            
-            for (j = 0; j < ARRAY_SIZE(DevExt->FastIoCountByIndex); j++) {
-                if (DevExt->FastIoCountByIndex[j] != 0) {
-                    KLInf("Device %p FastIoCountByIndex[0x%x]=%d", Device, j, DevExt->FastIoCountByIndex[j]);
-                }
-            }
-            
-            for (j = 0; j < ARRAY_SIZE(DevExt->FastIoSuccessCountByIndex); j++) {
-                if (DevExt->FastIoSuccessCountByIndex[j] != 0) {
-                    KLInf("Device %p FastIoSuccessCountByIndex[0x%x]=%d", Device, j, DevExt->FastIoSuccessCountByIndex[j]);
-                }
-            }
-        }
-
-        if (DevExt->SymLinkCreated) {
-            KLInf("Deleting Device %p symlink %wZ", Device, &DevExt->SymLinkName);
-            IoDeleteSymbolicLink(&DevExt->SymLinkName);
-        }
-        if (DevExt->AttachedToDevice) {
-            ObDereferenceObject(DevExt->TargetDevice);
-            ObDereferenceObject(DevExt->AttachedToDevice);
-        }
-        IoDeleteDevice(Device);
+        FbDriverDeviceDelete(Device);
         ObDereferenceObject(Device);
     }
 
@@ -384,9 +423,46 @@ DevCtlIrpHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 }
 
 NTSTATUS
+    FbFltIrpCompletionRoutine(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
+{
+    PFBDEV_IRP_CONTEXT IrpContext = (PFBDEV_IRP_CONTEXT)Context;
+    PFBDEV_EXT DevExt = IrpContext->DevExt;
+
+    if (IrpContext->Magic != FBDEV_IRP_CONTEXT_MAGIC)
+        __debugbreak();
+    if (IrpContext->Irp != Irp)
+        __debugbreak();
+    if (DevExt->Magic != FBDEV_EXT_MAGIC)
+        __debugbreak();
+
+    InterlockedIncrement(&DevExt->IrpCompletionCount);
+    if (Irp->PendingReturned)
+        IoMarkIrpPending(Irp);
+
+    FbDevExtDereference(DevExt);
+    NpFree(IrpContext, MTAG_DRV);
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
     FbFltIrpPassThrough(PFBDEV_EXT DevExt, PIRP Irp)
 {
-    IoSkipCurrentIrpStackLocation(Irp);
+    PFBDEV_IRP_CONTEXT IrpContext;
+
+    IrpContext = NpAlloc(sizeof(*IrpContext), MTAG_DRV);
+    if (!IrpContext) {
+        __debugbreak();
+        return CompleteIrp(Irp, STATUS_INSUFFICIENT_RESOURCES, 0);
+    }
+
+    IrpContext->DevExt = DevExt;
+    IrpContext->Irp = Irp;
+    IrpContext->Magic = FBDEV_IRP_CONTEXT_MAGIC;
+
+    FbDevExtReference(DevExt);
+    IoCopyCurrentIrpStackLocationToNext(Irp);
+    IoSetCompletionRoutine(Irp, FbFltIrpCompletionRoutine, IrpContext, TRUE, TRUE, TRUE);
     return IoCallDriver(DevExt->AttachedToDevice, Irp);
 }
 
@@ -460,10 +536,7 @@ DriverIrpHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     UnloadProtectionAcquire(&FbDriver->UnloadProtection);
 
-    DevExt = (PFBDEV_EXT)DeviceObject->DeviceExtension;
-    if (DevExt->Magic != FBDEV_EXT_MAGIC)
-        __debugbreak();
-
+    DevExt = FbDevExtByDevice(DeviceObject);
     if (DeviceObject == GetFbDriver()->CtlDevice) {
         InterlockedIncrement(&DevExt->IrpCount);
         Status = DevCtlIrpHandler(DeviceObject, Irp);
@@ -524,9 +597,7 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     }
 
     PFBDEV_EXT DevExt = (PFBDEV_EXT)DeviceObject->DeviceExtension;
-    RtlZeroMemory(DevExt, sizeof(*DevExt));
-    DevExt->DeviceObject = DeviceObject;
-    DevExt->Magic = FBDEV_EXT_MAGIC;
+    FbDevExtInit(DevExt, DeviceObject);
 
     KLInf("Device %p, DevExt %p", DeviceObject, DevExt);
 
