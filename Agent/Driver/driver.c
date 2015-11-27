@@ -61,12 +61,17 @@ NTSTATUS
     return status;
 }
 
+POBJECT_TYPE GetIoDriverObjectType(VOID)
+{
+    return ObGetObjectType(GetFbDriver()->Driver);
+}
+
 NTSTATUS GetNtfsDriverObject(PDRIVER_OBJECT *pDriver)
 {
     UNICODE_STRING ObjName = RTL_CONSTANT_STRING(L"\\FileSystem\\Ntfs");
 
-    KLInf("IoDriverObjectType %p", *IoDriverObjectType);
-    return GetObjectByName(&ObjName, *IoDriverObjectType, pDriver);
+    KLInf("IoDriverObjectType %p", GetIoDriverObjectType());
+    return GetObjectByName(&ObjName, GetIoDriverObjectType(), pDriver);
 }
 
 NTSTATUS GetDriverDevicesList(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT **pDeviceObjectList, ULONG *pNrDeviceObjects)

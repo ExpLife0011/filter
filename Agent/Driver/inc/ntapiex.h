@@ -165,10 +165,7 @@ NTSYSAPI
 
 
 NTSYSAPI
-    POBJECT_TYPE *ExWindowStationObjectType;
-
-NTSYSAPI
-    POBJECT_TYPE *IoDriverObjectType;
+    POBJECT_TYPE ObGetObjectType(PVOID Object);
 
 NTSYSAPI
     NTSTATUS
