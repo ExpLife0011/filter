@@ -384,7 +384,7 @@ DevCtlIrpHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 }
 
 NTSTATUS
-    FbFltPassThrough(PFBDEV_EXT DevExt, PIRP Irp)
+    FbFltIrpPassThrough(PFBDEV_EXT DevExt, PIRP Irp)
 {
     IoSkipCurrentIrpStackLocation(Irp);
     return IoCallDriver(DevExt->AttachedToDevice, Irp);
@@ -446,7 +446,7 @@ NTSTATUS
     }
 
     if (bPassThrough)
-        return FbFltPassThrough(DevExt, Irp);
+        return FbFltIrpPassThrough(DevExt, Irp);
 
     return Status;
 }
