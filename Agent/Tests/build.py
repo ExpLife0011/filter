@@ -6,7 +6,7 @@ import time
 import inspect
 import logging
 import shutil
-
+import argparse
 
 dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 
@@ -143,55 +143,55 @@ def inc_path(path):
 def replace_ext(path, ext):
     return os.path.splitext(path)[0] + ext
 
-def build_driver(elog, target):
+def build_driver(elog, build_dir, tmp_dir, target):
     cmd = quote_path(CL_EXE) + " /c"
     cmd+= inc_path(WDK_INC_KM)
     cmd+= inc_path(WDK_INC_KM_CRT)
     cmd+= inc_path(WDK_INC_SHARED)
     cmd+= inc_path(PROJ_ROOT)
-    cmd+=" /Fo" + quote_path(DRIVER_BUILD_TMP) + "\\"
-#    cmd+= " /Fd" + quote_path(os.path.join(DRIVER_BUILD_TMP, "vc120.pdb"))
+    cmd+=" /Fo" + quote_path(tmp_dir) + "\\"
+#    cmd+= " /Fd" + quote_path(os.path.join(tmp_dir, "vc120.pdb"))
     cmd+=" " + KCL_OPTS + " " + KCL_ARCH_D_OPTS + " " + CL_VER_OPTS_BY_TARGET[target]
     for f in DRIVER_SOURCES:
         cmd+= " " + quote_path(os.path.join(DRIVER_DIR, f))
     do_cmd(cmd, elog)
 
     cmd = quote_path(LINK_EXE)
-    cmd+= " /OUT:" + quote_path(os.path.join(BUILD_OUT_DIR, DRIVER_OUT)) + " " + KLINK_OPTS + " " + KLINK_ARCH_OPTS + " " + KLINK_VERSION
+    cmd+= " /OUT:" + quote_path(os.path.join(build_dir, DRIVER_OUT)) + " " + KLINK_OPTS + " " + KLINK_ARCH_OPTS + " " + KLINK_VERSION
     cmd+= " /osversion:" + OSVERSION_BY_TARGET[target]
     cmd+= " " + KLINK_SUBSYTEM + "," + SUBSYSTEM_VER_BY_TARGET[target]
-    cmd+= " /PDB:" + quote_path(os.path.join(BUILD_OUT_DIR, DRIVER_OUT_PDB))
+    cmd+= " /PDB:" + quote_path(os.path.join(build_dir, DRIVER_OUT_PDB))
     for l in KLIBS:
         cmd+= " " + quote_path(os.path.join(WDK_KM_LIB, l))
 
     for f in DRIVER_SOURCES:
         fobj = replace_ext(f, ".obj")
-        cmd+= " " + quote_path(os.path.join(DRIVER_BUILD_TMP, fobj))
+        cmd+= " " + quote_path(os.path.join(tmp_dir, fobj))
     do_cmd(cmd, elog)
 
     cmd = quote_path(SIGN_TOOL) + " sign /v /s " + CERT_STORE_NAME + " /n " + CERT_NAME
     cmd+= " /t http://timestamp.verisign.com/scripts/timstamp.dll "
-    cmd+= quote_path(os.path.join(BUILD_OUT_DIR, DRIVER_OUT))
+    cmd+= quote_path(os.path.join(build_dir, DRIVER_OUT))
     do_cmd(cmd, elog)
 
-def build_client(elog, target):
+def build_client(elog, build_dir, tmp_dir, target):
     cmd = quote_path(CL_EXE) + " /c"
     cmd+= inc_path(WDK_INC_UM)
     cmd+= inc_path(WDK_INC_KM_CRT)
     cmd+= inc_path(WDK_INC_SHARED)
     cmd+= inc_path(PROJ_ROOT)
-    cmd+=" /Fo" + quote_path(CLIENT_BUILD_TMP) + "\\"
-#    cmd+= " /Fd" + quote_path(os.path.join(CLIENT_BUILD_TMP, "vc120.pdb"))
+    cmd+=" /Fo" + quote_path(tmp_dir) + "\\"
+#    cmd+= " /Fd" + quote_path(os.path.join(tmp_dir, "vc120.pdb"))
     cmd+=" " + UCL_OPTS + " " + UCL_D_OPTS + " " + UCL_ARCH_D_OPTS + " " + CL_VER_OPTS_BY_TARGET[target]
     for f in CLIENT_SOURCES:
         cmd+= " " + quote_path(os.path.join(CLIENT_DIR, f))
     do_cmd(cmd, elog)
 
     cmd = quote_path(LINK_EXE)
-    cmd+= " /OUT:" + quote_path(os.path.join(BUILD_OUT_DIR, CLIENT_OUT)) + " " + ULINK_OPTS + " " + ULINK_ARCH_OPTS + " " + ULINK_VERSION
+    cmd+= " /OUT:" + quote_path(os.path.join(build_dir, CLIENT_OUT)) + " " + ULINK_OPTS + " " + ULINK_ARCH_OPTS + " " + ULINK_VERSION
     cmd+= " " + ULINK_SUBSYSTEM + "," + SUBSYSTEM_VER_BY_TARGET[target]
     cmd+= " /osversion:" + OSVERSION_BY_TARGET[target]
-    cmd+= " /PDB:" + quote_path(os.path.join(BUILD_OUT_DIR, CLIENT_OUT_PDB))
+    cmd+= " /PDB:" + quote_path(os.path.join(build_dir, CLIENT_OUT_PDB))
     for l in UWDK_LIBS:
         cmd+= " " + quote_path(os.path.join(WDK_UM_LIB, l))
     for l in UVS_LIBS:
@@ -200,7 +200,7 @@ def build_client(elog, target):
         cmd+= " " + quote_path(os.path.join(SDK_UCRT_LIB, l))
     for f in CLIENT_SOURCES:
         fobj = replace_ext(f, ".obj")
-        cmd+= " " + quote_path(os.path.join(CLIENT_BUILD_TMP, fobj))
+        cmd+= " " + quote_path(os.path.join(tmp_dir, fobj))
     do_cmd(cmd, elog)
 
 def rebuild(elog, target):
@@ -236,5 +236,49 @@ def rebuild(elog, target):
     elog.info("build completed with rc %d" % (rc,))
     return rc
 
+def make_dirs(dirs, elog):
+    for d in dirs:
+        if os.path.exists(d):
+            do_cmd("rmdir /s /q " + d, elog)
+        do_cmd("mkdir " + d, elog)
+
+def rebuild_target(elog, build_dir, tmp_dir, target):
+    bdir = os.path.join(build_dir, target)
+    tdir = os.path.join(tmp_dir, target)
+    make_dirs([bdir, tdir], elog)
+    driver_tdir = os.path.join(tdir, "driver")
+    client_tdir = os.path.join(tdir, "client")
+    make_dirs([client_tdir, driver_tdir], elog)
+    build_driver(elog, bdir, client_tdir, target)
+    build_client(elog, bdir, driver_tdir, target)
+
+def rebuild(elog, target):
+    odir = None
+    try:
+        os.system("taskkill /F /im mspdbsrv.exe")
+        make_dirs([BUILD, BUILD_TMP], elog)
+
+        for f in VS_BUILD_BINS:
+            do_copy_file(os.path.join(VS_BIN_PATH, f), os.path.join(BUILD_TMP, f), elog)
+
+        for f in WDK_BUILD_BINS:
+            do_copy_file(os.path.join(WDK_BIN, f), os.path.join(BUILD_TMP, f), elog)
+
+        odir = os.getcwd()
+        os.chdir(BUILD_TMP)
+        if target == 'all':
+            for t in TARGETS:
+                rebuild_target(elog, BUILD, BUILD_TMP, t)
+        else:
+            rebuild_target(elog, BUILD, BUILD_TMP, target)
+    except Exception as e:
+        elog.exception(str(e))
+    finally:
+        if odir != None:
+            os.chdir(odir)
+
 if __name__ == '__main__':
-    rebuild(log, "win81")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("target", type=str, help="target: win7, win8, win81, win10")
+    args = parser.parse_args()
+    rebuild(log, args.target)

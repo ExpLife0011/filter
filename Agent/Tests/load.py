@@ -24,10 +24,10 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 ch.setFormatter(formatter)
 log.addHandler(ch)
 
-def rebuild():
-    build.rebuild(log, "win81")
+def rebuild(target):
+    build.rebuild(log, target)
 
-def test_run(host, bsod = False, test = False):
+def test_run(target, host, bsod = False, test = False):
     login = "Administrator"
     passwd = "1q2w3eQAZ"
     sh = ssh.SshUser(log, host, login, passwd = passwd)
@@ -35,7 +35,7 @@ def test_run(host, bsod = False, test = False):
     driver = "FBackup.sys"
     files = [client, driver, "FBackupCtl.pdb", "FBackup.pdb"]
     r_path = "c:\\FBackupTest"
-    b_path = os.path.join(os.path.join(pdir, "build"), "x64")
+    b_path = os.path.join(os.path.join(pdir, "build"), target)
     try:
         sh.cmd("rmdir /s /q " + r_path, throw = False)
         sh.cmd("mkdir " + r_path)
@@ -62,8 +62,9 @@ if __name__ == '__main__':
     parser.add_argument("-b", "--bsod", action="store_true", help="bsod the node")
     parser.add_argument("-t", "--test", action="store_true", help="test drv")
     parser.add_argument("-r", "--rebuild", action="store_true", help="rebuild project")
+    parser.add_argument("target", type=str, help="target")
     parser.add_argument("host", type=str, help="host ip")
     args = parser.parse_args()
     if args.rebuild:
-        rebuild()
-    test_run(args.host, args.bsod, args.test)
+        rebuild(args.target)
+    test_run(args.target, args.host, args.bsod, args.test)
