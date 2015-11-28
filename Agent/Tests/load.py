@@ -25,7 +25,7 @@ ch.setFormatter(formatter)
 log.addHandler(ch)
 
 def rebuild():
-    build.rebuild(log)
+    build.rebuild(log, "win81")
 
 def test_run(host, bsod = False, test = False):
     login = "Administrator"

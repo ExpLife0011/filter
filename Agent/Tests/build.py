@@ -60,7 +60,6 @@ SDK_LIB = os.path.join(SDK_PATH, "Lib\\10.0.10240.0")
 SDK_UCRT_LIB = os.path.join(SDK_LIB,  "ucrt\\x64")
 SDK_UM_LIB = os.path.join(SDK_LIB, "um\\x64")
 
-KCL_VER_D_OPTS="/D _WIN32_WINNT=0x0601 /D WINVER=0x0601 /D WINNT=1 /D NTDDI_VERSION=0x06010000"
 KCL_ARCH_D_OPTS="/D _WIN64 /D _AMD64_ /D AMD64"
 KCL_OPTS="/Zi /nologo /W3 /WX /Od /GF /Gm- /Zp8 /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /GR- /Gz /TC /wd4603 /wd4627 /wd4986 /wd4987 /wd4996 /errorReport:prompt /kernel -cbstring -d2epilogunwind  /d1nodatetime /d1import_no_registry /d2AllowCompatibleILVersions /d2Zi+"
 
@@ -68,15 +67,19 @@ KLIB_ARCH_OPTS="/MACHINE:X64"
 KLIB_OPTS="/NOLOGO"
 KLIBS=["BufferOverflowK.lib", "ntoskrnl.lib", "hal.lib", "wmilib.lib", "netio.lib"]
 
-KLINK_VER_OPTS="/VERSION:\"6.3\" /SUBSYSTEM:NATIVE,\"6.01\""
+KLINK_VERSION="/VERSION:0.0"
+KLINK_SUBSYTEM = "/SUBSYSTEM:NATIVE"
 KLINK_ARCH_OPTS="/MACHINE:X64"
-KLINK_OPTS="/ERRORREPORT:PROMPT /INCREMENTAL:NO /NOLOGO /WX /SECTION:\"INIT,d\" /NODEFAULTLIB /MANIFEST:NO /DEBUG /MERGE:\"_TEXT=.text;_PAGE=PAGE\" /PROFILE /kernel /IGNORE:4198,4010,4037,4039,4065,4070,4078,4087,4089,4221,4108,4088,4218,4218,4235 /osversion:6.3 /pdbcompress /debugtype:pdata /Driver /OPT:REF /OPT:ICF /ENTRY:\"GsDriverEntry\" /RELEASE"
+KLINK_OPTS="/ERRORREPORT:PROMPT /INCREMENTAL:NO /NOLOGO /WX /SECTION:\"INIT,d\" /NODEFAULTLIB /MANIFEST:NO /DEBUG /MERGE:\"_TEXT=.text;_PAGE=PAGE\" /PROFILE /kernel /IGNORE:4198,4010,4037,4039,4065,4070,4078,4087,4089,4221,4108,4088,4218,4218,4235 /pdbcompress /debugtype:pdata /Driver /OPT:REF /OPT:ICF /ENTRY:\"GsDriverEntry\" /RELEASE"
 
-UCL_D_OPTS="/D _WIN32_WINNT=0x0601 /D WINVER=0x0601 /D WINNT=1 /D NTDDI_VERSION=0x06010000 /D _WIN64 /D _AMD64_ /D AMD64 /D NDEBUG /D _CONSOLE /D _LIB /D _UNICODE /D UNICODE"
+UCL_D_OPTS="/D NDEBUG /D _CONSOLE /D _LIB /D _UNICODE /D UNICODE"
+UCL_ARCH_D_OPTS="/D _WIN64 /D _AMD64_ /D AMD64"
 UCL_OPTS="/Zi /nologo /W3 /WX /Od /GL /Gm- /EHsc /MT /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Gd /TC /errorReport:prompt"
 
 ULINK_ARCH_OPTS="/MACHINE:X64"
-ULINK_OPTS="/ERRORREPORT:PROMPT /INCREMENTAL:NO /NOLOGO /MANIFEST /MANIFESTUAC:\"level='asInvoker' uiAccess='false'\" /manifest:embed /DEBUG /SUBSYSTEM:CONSOLE /OPT:REF /OPT:ICF /LTCG /TLBID:1 /DYNAMICBASE /NXCOMPAT"
+ULINK_VERSION="/VERSION:0.0"
+ULINK_SUBSYSTEM="/SUBSYSTEM:CONSOLE"
+ULINK_OPTS="/ERRORREPORT:PROMPT /INCREMENTAL:NO /NOLOGO /MANIFEST /MANIFESTUAC:\"level='asInvoker' uiAccess='false'\" /manifest:embed /DEBUG /OPT:REF /OPT:ICF /LTCG /TLBID:1 /DYNAMICBASE /NXCOMPAT"
 
 UVS_LIBS=["libcmt.lib", "oldnames.lib", "libvcruntime.lib", "legacy_stdio_definitions.lib", "legacy_stdio_wide_specifiers.lib"]
 UCRT_LIBS = ["libucrt.lib"]
@@ -106,6 +109,24 @@ DRIVER_SOURCES = ["driver.c", "klog.c", "fastio.c", "helpers.c", "worker.c"]
 
 CLIENT_SOURCES = ["client.c", "scmload.c", "main.c"]
 
+TARGET_WIN7 = "win7"
+TARGET_WIN8 = "win8"
+TARGET_WIN81 = "win81"
+TARGET_WIN10 = "win10"
+
+TARGETS = [TARGET_WIN7, TARGET_WIN8, TARGET_WIN81, TARGET_WIN10]
+
+CL_VER_OPTS_WIN7 = "/D _WIN32_WINNT=0x0601 /D WINVER=0x0601 /D WINNT=1 /D NTDDI_VERSION=0x06010000"
+CL_VER_OPTS_WIN8 = "/D _WIN32_WINNT=0x0602 /D WINVER=0x0602 /D WINNT=1 /D NTDDI_VERSION=0x06020000"
+CL_VER_OPTS_WIN81 = "/D _WIN32_WINNT=0x0603 /D WINVER=0x0603 /D WINNT=1 /D NTDDI_VERSION=0x06030000"
+CL_VER_OPTS_WIN10 = "/D _WIN32_WINNT=0x0A00 /D WINVER=0x0A00 /D WINNT=1 /D NTDDI_VERSION=0x0A000000"
+
+SUBSYSTEM_VER_BY_TARGET = {TARGET_WIN7: "6.01", TARGET_WIN8 : "6.02", TARGET_WIN81 : "6.03", TARGET_WIN10 : "10.0"}
+OSVERSION_BY_TARGET = {TARGET_WIN7 : "6.1", TARGET_WIN8 : "6.2", TARGET_WIN81 : "6.3", TARGET_WIN10 : "10.0"}
+
+CL_VER_OPTS_BY_TARGET = {TARGET_WIN7 : CL_VER_OPTS_WIN7, TARGET_WIN8 : CL_VER_OPTS_WIN8, TARGET_WIN81 : CL_VER_OPTS_WIN81,
+                         TARGET_WIN10 : CL_VER_OPTS_WIN10}
+
 def do_cmd(cmd, elog):
     exec_cmd2(cmd, throw = True, elog = elog)
 
@@ -122,7 +143,7 @@ def inc_path(path):
 def replace_ext(path, ext):
     return os.path.splitext(path)[0] + ext
 
-def build_driver(elog):
+def build_driver(elog, target):
     cmd = quote_path(CL_EXE) + " /c"
     cmd+= inc_path(WDK_INC_KM)
     cmd+= inc_path(WDK_INC_KM_CRT)
@@ -130,13 +151,15 @@ def build_driver(elog):
     cmd+= inc_path(PROJ_ROOT)
     cmd+=" /Fo" + quote_path(DRIVER_BUILD_TMP) + "\\"
 #    cmd+= " /Fd" + quote_path(os.path.join(DRIVER_BUILD_TMP, "vc120.pdb"))
-    cmd+=" " + KCL_OPTS + " " + KCL_VER_D_OPTS + " " + KCL_ARCH_D_OPTS
+    cmd+=" " + KCL_OPTS + " " + KCL_ARCH_D_OPTS + " " + CL_VER_OPTS_BY_TARGET[target]
     for f in DRIVER_SOURCES:
         cmd+= " " + quote_path(os.path.join(DRIVER_DIR, f))
     do_cmd(cmd, elog)
 
     cmd = quote_path(LINK_EXE)
-    cmd+= " /OUT:" + quote_path(os.path.join(BUILD_OUT_DIR, DRIVER_OUT)) + " " + KLINK_OPTS + " " + KLINK_ARCH_OPTS + " " + KLINK_VER_OPTS
+    cmd+= " /OUT:" + quote_path(os.path.join(BUILD_OUT_DIR, DRIVER_OUT)) + " " + KLINK_OPTS + " " + KLINK_ARCH_OPTS + " " + KLINK_VERSION
+    cmd+= " /osversion:" + OSVERSION_BY_TARGET[target]
+    cmd+= " " + KLINK_SUBSYTEM + "," + SUBSYSTEM_VER_BY_TARGET[target]
     cmd+= " /PDB:" + quote_path(os.path.join(BUILD_OUT_DIR, DRIVER_OUT_PDB))
     for l in KLIBS:
         cmd+= " " + quote_path(os.path.join(WDK_KM_LIB, l))
@@ -151,7 +174,7 @@ def build_driver(elog):
     cmd+= quote_path(os.path.join(BUILD_OUT_DIR, DRIVER_OUT))
     do_cmd(cmd, elog)
 
-def build_client(elog):
+def build_client(elog, target):
     cmd = quote_path(CL_EXE) + " /c"
     cmd+= inc_path(WDK_INC_UM)
     cmd+= inc_path(WDK_INC_KM_CRT)
@@ -159,13 +182,15 @@ def build_client(elog):
     cmd+= inc_path(PROJ_ROOT)
     cmd+=" /Fo" + quote_path(CLIENT_BUILD_TMP) + "\\"
 #    cmd+= " /Fd" + quote_path(os.path.join(CLIENT_BUILD_TMP, "vc120.pdb"))
-    cmd+=" " + UCL_OPTS + " " + UCL_D_OPTS
+    cmd+=" " + UCL_OPTS + " " + UCL_D_OPTS + " " + UCL_ARCH_D_OPTS + " " + CL_VER_OPTS_BY_TARGET[target]
     for f in CLIENT_SOURCES:
         cmd+= " " + quote_path(os.path.join(CLIENT_DIR, f))
     do_cmd(cmd, elog)
 
     cmd = quote_path(LINK_EXE)
-    cmd+= " /OUT:" + quote_path(os.path.join(BUILD_OUT_DIR, CLIENT_OUT)) + " " + ULINK_OPTS + " " + ULINK_ARCH_OPTS
+    cmd+= " /OUT:" + quote_path(os.path.join(BUILD_OUT_DIR, CLIENT_OUT)) + " " + ULINK_OPTS + " " + ULINK_ARCH_OPTS + " " + ULINK_VERSION
+    cmd+= " " + ULINK_SUBSYSTEM + "," + SUBSYSTEM_VER_BY_TARGET[target]
+    cmd+= " /osversion:" + OSVERSION_BY_TARGET[target]
     cmd+= " /PDB:" + quote_path(os.path.join(BUILD_OUT_DIR, CLIENT_OUT_PDB))
     for l in UWDK_LIBS:
         cmd+= " " + quote_path(os.path.join(WDK_UM_LIB, l))
@@ -178,7 +203,7 @@ def build_client(elog):
         cmd+= " " + quote_path(os.path.join(CLIENT_BUILD_TMP, fobj))
     do_cmd(cmd, elog)
 
-def rebuild(elog):
+def rebuild(elog, target):
     os.system("taskkill /F /im mspdbsrv.exe")
     rc = 1
     if os.path.exists(BUILD):
@@ -201,8 +226,8 @@ def rebuild(elog):
         do_cmd("mkdir " + DRIVER_BUILD_TMP, elog)
         do_cmd("mkdir " + CLIENT_BUILD_TMP, elog)
 
-        build_driver(elog)
-        build_client(elog)
+        build_driver(elog, target)
+        build_client(elog, target)
         rc = 0
     except Exception as e:
         elog.exception(str(e))
@@ -212,4 +237,4 @@ def rebuild(elog):
     return rc
 
 if __name__ == '__main__':
-    rebuild(log)
+    rebuild(log, "win81")
