@@ -7,5 +7,6 @@
 #define MTAG_DRV                  '20BF'
 #define MTAG_GEN                  '30BF'
 #define MTAG_WRK                  '40BF'
+#define MTAG_SOCKET               '50BF'
 
 #endif
