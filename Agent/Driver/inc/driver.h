@@ -67,11 +67,12 @@ typedef struct _FBDEV_IRP_CONTEXT {
 } FBDEV_IRP_CONTEXT, *PFBDEV_IRP_CONTEXT;
 
 typedef struct _FBDRIVER {
-    PDRIVER_OBJECT      Driver;
-    PDEVICE_OBJECT      CtlDevice;
-    PDRIVER_OBJECT      NtfsDriver;
-    UNLOAD_PROTECTION   UnloadProtection;
-    WORKER              MainWorker;
+    RTL_OSVERSIONINFOEXW    OsVersion;
+    PDRIVER_OBJECT          Driver;
+    PDEVICE_OBJECT          CtlDevice;
+    PDRIVER_OBJECT          NtfsDriver;
+    UNLOAD_PROTECTION       UnloadProtection;
+    WORKER                  MainWorker;
 } FBDRIVER, *PFBDRIVER;
 
 PFBDRIVER GetFbDriver(VOID);

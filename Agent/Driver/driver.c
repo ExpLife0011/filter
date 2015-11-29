@@ -558,6 +558,35 @@ Ret:
     return Status;
 }
 
+#define WIN32_WINNT_MAJOR(ver)  \
+            ((UCHAR)((ver) >> 8))
+
+#define WIN32_WINNT_MINOR(ver)  \
+            ((UCHAR)((ver) & 0xFF))
+
+NTSTATUS FbDriverCheckOsVersion(PFBDRIVER FbDriver)
+{
+    NTSTATUS Status;
+    
+    FbDriver->OsVersion.dwOSVersionInfoSize = sizeof(FbDriver->OsVersion);
+    Status = RtlGetVersion((PRTL_OSVERSIONINFOW)&FbDriver->OsVersion);
+    if (!NT_SUCCESS(Status)) {
+        KLErr("Can't get os version Status 0x%x", Status);
+        return Status;
+    }
+
+    KLInf("Os version Majox 0x%x Minor 0x%x, Built For Major 0x%x Minor 0x%x",
+          FbDriver->OsVersion.dwMajorVersion, FbDriver->OsVersion.dwMinorVersion,
+          WIN32_WINNT_MAJOR(_WIN32_WINNT), WIN32_WINNT_MINOR(_WIN32_WINNT));
+
+    if (WIN32_WINNT_MAJOR(_WIN32_WINNT) != FbDriver->OsVersion.dwMajorVersion)
+        return STATUS_NOT_SUPPORTED;
+    if (WIN32_WINNT_MINOR(_WIN32_WINNT) != FbDriver->OsVersion.dwMinorVersion)
+        return STATUS_NOT_SUPPORTED;
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
                      IN PUNICODE_STRING RegistryPath)
 {
@@ -572,6 +601,12 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     if (!NT_SUCCESS(Status)) {
         DPRINT("DriverLibInit failure Status 0x%x\n", Status);
         return Status;
+    }
+
+    Status = FbDriverCheckOsVersion(FbDriver);
+    if (!NT_SUCCESS(Status)) {
+        KLErr("FbDriverCheckOsVersion failure Status 0x%x", Status);
+        goto FailFbCheckOsVersion;
     }
 
     Status = FbDriverInit(FbDriver);
@@ -626,7 +661,8 @@ FailCreateSymLink:
 FailCreateDevice:
     FbDriverDeinit(FbDriver);
 FailFbDriverInit:
-    KLInf("DriverEntry Status 0x%x", Status);
+FailFbCheckOsVersion:
+    KLErr("DriverEntry Status 0x%x", Status);
     KLogDeinit();
     return Status;
 }
