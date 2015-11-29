@@ -5,14 +5,14 @@
 
 SC_HANDLE ScmOpenSCMHandle();
 
-VOID ScmCloseSCMHandle(SC_HANDLE hscm);
+VOID ScmCloseSCMHandle(SC_HANDLE hScm);
 
-BOOL ScmInstallDriver( SC_HANDLE  scm, LPCTSTR DriverName, LPCTSTR driverExec );
+DWORD ScmInstallDriver(SC_HANDLE hScm, LPCTSTR DriverName, LPCTSTR DriverExec);
 
-BOOL ScmRemoveDriver(SC_HANDLE scm, LPCTSTR DriverName);
+DWORD ScmRemoveDriver(SC_HANDLE hScm, LPCTSTR DriverName);
 
-BOOL ScmStartDriver(SC_HANDLE  scm, LPCTSTR DriverName);
+DWORD ScmStartDriver(SC_HANDLE hScm, LPCTSTR DriverName);
 
-BOOL ScmStopDriver(SC_HANDLE  scm, LPCTSTR DriverName);
+DWORD ScmStopDriver(SC_HANDLE hScm, LPCTSTR DriverName);
 
 #endif

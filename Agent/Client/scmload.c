@@ -3,110 +3,120 @@
 
 SC_HANDLE ScmOpenSCMHandle()
 {
-    SC_HANDLE hscm = OpenSCManager(NULL,NULL,SC_MANAGER_ALL_ACCESS);
+    SC_HANDLE hScm = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
 
-    if (hscm == NULL) {
+    if (hScm == NULL) {
         printf("Error OpenSCManager %d\n", GetLastError());
     }
 
-    return hscm;
+    return hScm;
 }
 
-VOID ScmCloseSCMHandle(SC_HANDLE hscm)
+VOID ScmCloseSCMHandle(SC_HANDLE hScm)
 {
-    CloseServiceHandle(hscm);
+    CloseServiceHandle(hScm);
 }
 
-BOOL ScmInstallDriver( SC_HANDLE  scm, LPCTSTR DriverName, LPCTSTR driverExec )
+DWORD ScmInstallDriver(SC_HANDLE  hScm, LPCTSTR DriverName, LPCTSTR DriverExec)
 {
-    SC_HANDLE Service =
-        CreateService ( scm,
+    SC_HANDLE hService;
+    DWORD err;
+
+    hService = CreateService(hScm,
         DriverName,
         DriverName,
         SERVICE_ALL_ACCESS,
         SERVICE_KERNEL_DRIVER,
         SERVICE_DEMAND_START,
         SERVICE_ERROR_NORMAL,
-        driverExec,
+        DriverExec,
         NULL,
         NULL, NULL, NULL, NULL);
-
-    if (Service == NULL)
+    if (hService == NULL)
     {
-        DWORD err = GetLastError();
+        err = GetLastError();
         if (err == ERROR_SERVICE_EXISTS) {
-        } else  printf("Error can't create service %d\n", err);
-
-        return FALSE;
+            printf("Service already exists err %d\n", err);
+        } else {
+            printf("Error can't create service %d\n", err);
+        }
+        return err;
     }
-    CloseServiceHandle (Service);
-    return TRUE;
+    CloseServiceHandle (hService);
+    return 0;
 }
 
-BOOL ScmRemoveDriver(SC_HANDLE scm, LPCTSTR DriverName)
+DWORD ScmRemoveDriver(SC_HANDLE hScm, LPCTSTR DriverName)
 {
-    SC_HANDLE Service =
-        OpenService (scm, DriverName, SERVICE_ALL_ACCESS);
-    if (Service == NULL) {
-        printf("OpenService error %d\n", GetLastError());
-        return FALSE;
+    SC_HANDLE hService;
+    DWORD err;
+
+    hService = OpenService(hScm, DriverName, SERVICE_ALL_ACCESS);
+    if (hService == NULL) {
+        err = GetLastError();
+        printf("OpenService error %d\n", err);
+        return err;
     }
 
-    BOOL ret = DeleteService (Service);
-    if (!ret) {
-        printf("DeleteService error %d\n", GetLastError());
-    }
+    if (!DeleteService(hService)) {
+        err = GetLastError();
+        printf("DeleteService error %d\n", err);
+    } else
+        err = 0;
 
-    CloseServiceHandle (Service);
-    return ret;
+    CloseServiceHandle(hService);
+    return err;
 }
 
-BOOL ScmStartDriver(SC_HANDLE  scm, LPCTSTR DriverName)
+DWORD ScmStartDriver(SC_HANDLE hScm, LPCTSTR DriverName)
 {
-    SC_HANDLE Service = OpenService(scm, DriverName, SERVICE_ALL_ACCESS);
-
-    if (Service == NULL) { 
-        printf("OpenService error %d\n", GetLastError());
-        return FALSE;
+    SC_HANDLE hService;
+    DWORD err;
+    
+    hService = OpenService(hScm, DriverName, SERVICE_ALL_ACCESS);
+    if (hService == NULL) {
+        err = GetLastError();
+        printf("OpenService error %d\n", err);
+        return err;
     }
 
-    BOOL ret =
-        StartService( Service, 0, NULL);
-
-    if (!ret)
+    if (!StartService(hService, 0, NULL))
     {
         DWORD err = GetLastError();
-        if (err == ERROR_SERVICE_ALREADY_RUNNING)
-            ret = TRUE;
-        else { 
+        if (err == ERROR_SERVICE_ALREADY_RUNNING) {
+            printf("Service already running err %d\n", err);
+        } else { 
             printf("StartService error %d\n", err);
         }
-    }
+    } else
+        err = 0;
 
-    CloseServiceHandle (Service);
-    return ret;
+    CloseServiceHandle(hService);
+    return err;
 }
 
-BOOL ScmStopDriver(SC_HANDLE  scm, LPCTSTR DriverName)
+DWORD ScmStopDriver(SC_HANDLE hScm, LPCTSTR DriverName)
 {
-    SC_HANDLE Service = OpenService (scm, DriverName, SERVICE_ALL_ACCESS );
+    SC_HANDLE hService;
+    SERVICE_STATUS ServiceStatus;
+    DWORD err;
 
-    if (Service == NULL)
+    hService = OpenService (hScm, DriverName, SERVICE_ALL_ACCESS);
+    if (hService == NULL)
     {
         DWORD err = GetLastError();
         printf("OpenService error %d\n", GetLastError());
-        return FALSE;
+        return err;
     }
 
-    SERVICE_STATUS serviceStatus;
-    BOOL ret = ControlService(Service, SERVICE_CONTROL_STOP, &serviceStatus);
-    if (!ret)
+    if (!ControlService(hService, SERVICE_CONTROL_STOP, &ServiceStatus))
     {
         DWORD err = GetLastError();
-        printf("ControlService error %d\n", GetLastError());
-    }
+        printf("ControlService error %d\n", err);
+    } else
+        err = 0;
 
-    CloseServiceHandle (Service);
-    return ret;
+    CloseServiceHandle (hService);
+    return err;
 }
 

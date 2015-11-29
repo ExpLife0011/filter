@@ -33,11 +33,12 @@ DWORD NTAPI CDrvCtlFltStart()
 {
     HANDLE hDevice = NULL;
     DWORD BytesReturned;
-    DWORD Result = -1;
+    DWORD err;
 
     hDevice = CDrvOpen();
     if (hDevice == NULL) {
-        return -1;
+        err = GetLastError();
+        return err;
     }
 
     if( !DeviceIoControl(hDevice,
@@ -47,25 +48,25 @@ DWORD NTAPI CDrvCtlFltStart()
         &BytesReturned,
         NULL )  )
     {
-        printf( "Error in IOCTL_FBACKUP_FLT_START %d\n", GetLastError());
-        Result = -1;
-    } else {
-        Result = 0;
-    }
+        err = GetLastError();
+        printf( "Error in IOCTL_FBACKUP_FLT_START %d\n", err);
+    } else
+        err = 0;
 
     CDrvClose(hDevice);
-    return Result;
+    return err;
 }
 
 DWORD NTAPI CDrvCtlFltStop()
 {
     HANDLE hDevice = NULL;
     DWORD BytesReturned;
-    DWORD Result = -1;
+    DWORD err;
 
     hDevice = CDrvOpen();
     if (hDevice == NULL) {
-        return -1;
+        err = GetLastError();
+        return err;
     }
 
     if( !DeviceIoControl(hDevice,
@@ -75,25 +76,25 @@ DWORD NTAPI CDrvCtlFltStop()
         &BytesReturned,
         NULL )  )
     {
-        printf( "Error in IOCTL_FBACKUP_FLT_STOP %d\n", GetLastError());
-        Result = -1;
-    } else {
-        Result = 0;
-    }
+        err = GetLastError();
+        printf( "Error in IOCTL_FBACKUP_FLT_STOP %d\n", err);
+    } else
+        err = 0;
 
     CDrvClose(hDevice);
-    return Result;
+    return err;
 }
 
 DWORD NTAPI CDrvCtlEcho()
 {
     HANDLE hDevice = NULL;
     DWORD BytesReturned;
-    DWORD Result = -1;
+    DWORD err;
 
     hDevice = CDrvOpen();
     if (hDevice == NULL) {
-        return -1;
+        err = GetLastError();
+        return err;
     }
 
     if (!DeviceIoControl(hDevice,
@@ -103,26 +104,25 @@ DWORD NTAPI CDrvCtlEcho()
         &BytesReturned,
         NULL))
     {
-        printf("Error in IOCTL_FBACKUP_ECHO %d\n", GetLastError());
-        Result = -1;
-    }
-    else {
-        Result = 0;
-    }
+        err = GetLastError();
+        printf("Error in IOCTL_FBACKUP_ECHO %d\n", err);
+    } else
+        err = 0;
 
     CDrvClose(hDevice);
-    return Result;
+    return err;
 }
 
 DWORD NTAPI CDrvCtlBugCheck()
 {
     HANDLE hDevice = NULL;
     DWORD BytesReturned;
-    DWORD Result = -1;
+    DWORD err;
 
     hDevice = CDrvOpen();
     if (hDevice == NULL) {
-        return -1;
+        err = GetLastError();
+        return err;
     }
 
     if (!DeviceIoControl(hDevice,
@@ -132,26 +132,25 @@ DWORD NTAPI CDrvCtlBugCheck()
         &BytesReturned,
         NULL))
     {
-        printf("Error in IOCTL_FBACKUP_BUGCHECK %d\n", GetLastError());
-        Result = -1;
-    }
-    else {
-        Result = 0;
-    }
+        err = GetLastError();
+        printf("Error in IOCTL_FBACKUP_BUGCHECK %d\n", err);
+    } else
+        err = 0;
 
     CDrvClose(hDevice);
-    return Result;
+    return err;
 }
 
 DWORD NTAPI CDrvCtlTest()
 {
     HANDLE hDevice = NULL;
     DWORD BytesReturned;
-    DWORD Result = -1;
+    DWORD err;
 
     hDevice = CDrvOpen();
     if (hDevice == NULL) {
-        return -1;
+        err = GetLastError();
+        return err;
     }
 
     if (!DeviceIoControl(hDevice,
@@ -161,27 +160,26 @@ DWORD NTAPI CDrvCtlTest()
         &BytesReturned,
         NULL))
     {
-        printf("Error in IOCTL_FBACKUP_TEST_DRV_LIB %d\n", GetLastError());
-        Result = -1;
-    }
-    else {
-        Result = 0;
-    }
+        err = GetLastError();
+        printf("Error in IOCTL_FBACKUP_TEST_DRV_LIB %d\n", err);
+    } else
+        err = 0;
 
     CDrvClose(hDevice);
-    return Result;
+    return err;
 }
 
 DWORD NTAPI CDrvInstall(WCHAR *BinPath)
 {
-    SC_HANDLE hscm = NULL;
+    SC_HANDLE hScm = NULL;
     DWORD err;
     WCHAR SysDrvPath[MAX_PATH];
     WCHAR SysDir[MAX_PATH];
 
     if (GetSystemDirectory(SysDir, RTL_NUMBER_OF(SysDir)) <= 0) {
-        printf("GetSystemDirectory failed with err=%d\n", GetLastError());
-        return -1;
+        err = GetLastError();
+        printf("GetSystemDirectory failed with err=%d\n", err);
+        return err;
     }
 
     _snwprintf_s(SysDrvPath, RTL_NUMBER_OF(SysDrvPath), _TRUNCATE, L"%ws\\drivers\\%ws", SysDir, FBACKUP_DRV_NAME_EXT_W);
@@ -190,113 +188,117 @@ DWORD NTAPI CDrvInstall(WCHAR *BinPath)
     if (!CopyFileW(BinPath, SysDrvPath, FALSE)) {
         err = GetLastError();
         printf("CopyFileW %ws -> %ws err %d\n", BinPath, SysDrvPath, err);
-        return -1;
+        return err;
     }
 
-    hscm = ScmOpenSCMHandle();
-    if (hscm == INVALID_HANDLE_VALUE) {
-        printf("Error OpenSCMHandle\n");
-        return -1;
+    hScm = ScmOpenSCMHandle();
+    if (hScm == NULL) {
+        err = GetLastError();
+        printf("Error OpenSCMHandle %d\n", err);
+        return err;
     }
         
-    if (!ScmInstallDriver(hscm, FBACKUP_DRV_NAME_W, SysDrvPath)) {
-        err = GetLastError();
+    err = ScmInstallDriver(hScm, FBACKUP_DRV_NAME_W, SysDrvPath);
+    if (err) {
         if (err == ERROR_SERVICE_EXISTS) {
-            goto cleanup;
+            printf("Service already exists err %d\n", err);            
+        } else {
+            printf("Error install driver err %x\n", err);
         }
-        printf("Error install driver err %x\n", err);
-        return -1;
     }
 
-cleanup:
-    if (hscm != NULL) {
-        ScmCloseSCMHandle(hscm);
-    }
+    ScmCloseSCMHandle(hScm);
 
-    return 0;
+    return err;
 }
 
 DWORD NTAPI CDrvUninstall()
 {
-    SC_HANDLE hscm = NULL;
-    hscm = ScmOpenSCMHandle();
-    if (hscm == INVALID_HANDLE_VALUE) {
-        printf("Error OpenSCMHandle\n");
-        return -1;
+    SC_HANDLE hScm = NULL;
+    DWORD err;
+
+    hScm = ScmOpenSCMHandle();
+    if (hScm == NULL) {
+        err = GetLastError();
+        printf("Error OpenSCMHandle err %d\n", err);
+        return err;
     }
 
-    if (!ScmRemoveDriver(hscm, FBACKUP_DRV_NAME_W)) {
-        printf("Error remove driver\n");
-        return -1;
-    }
+    err = ScmRemoveDriver(hScm, FBACKUP_DRV_NAME_W);
+    if (err)
+        printf("Error remove driver err %d\n", err);
 
-    if (hscm != NULL) {
-        ScmCloseSCMHandle(hscm);
-    }
-    return 0;
+    ScmCloseSCMHandle(hScm);
+
+    return err;
 }
 
 DWORD NTAPI CDrvStart()
 {
-    SC_HANDLE hscm = NULL;
-    hscm = ScmOpenSCMHandle();
-    if (hscm == INVALID_HANDLE_VALUE) {
-        printf("Error OpenSCMHandle\n");
-        return -1;
+    SC_HANDLE hScm = NULL;
+    DWORD err;
+
+    hScm = ScmOpenSCMHandle();
+    if (hScm == NULL) {
+        err = GetLastError();
+        printf("Error OpenSCMHandle err %d\n", err);
+        return err;
     }
 
-    if (!ScmStartDriver(hscm, FBACKUP_DRV_NAME_W)) {
-        printf("Error start driver\n");
-        return -1;
-    }
+    err = ScmStartDriver(hScm, FBACKUP_DRV_NAME_W);
+    if (err)
+        printf("Error start driver err %d\n", err);
 
-    if (hscm != NULL) {
-        ScmCloseSCMHandle(hscm);
-    }
-    return 0;
+    ScmCloseSCMHandle(hScm);
+    return err;
 }
 
 DWORD NTAPI CDrvStop()
 {
-    SC_HANDLE hscm = NULL;
-    hscm = ScmOpenSCMHandle();
-    if (hscm == INVALID_HANDLE_VALUE) {
+    SC_HANDLE hScm = NULL;
+    DWORD err;
+
+    hScm = ScmOpenSCMHandle();
+    if (hScm == NULL) {
+        err = GetLastError();
         printf("Error OpenSCMHandle\n");
-        return -1;
+        return err;
     }
 
-    if (!ScmStopDriver(hscm, FBACKUP_DRV_NAME_W)) {
-        printf("Error stop driver\n");
-        return -1;
-    }
+    err = ScmStopDriver(hScm, FBACKUP_DRV_NAME_W);
+    if (err)
+        printf("Error stop driver %d\n", err);
 
-    if (hscm != NULL) {
-        ScmCloseSCMHandle(hscm);
-    }
+    ScmCloseSCMHandle(hScm);
 
-    return 0;
+    return err;
 }
 
 DWORD NTAPI CDrvLoad(WCHAR *BinPath)
 {
-    if (CDrvInstall(BinPath) < 0) {
-        goto out;
-    }
+    DWORD err;
+    
+    err = CDrvInstall(BinPath);
+    if (err)
+        return err;
 
-    if (CDrvStart() < 0) {
-        goto rem_drv;
+    err = CDrvStart();
+    if (err) {
+        CDrvUninstall();
+        return err;
     }
 
     return 0;
-rem_drv:
-    CDrvUninstall();
-out:
-    return -1;
 }
 
 DWORD NTAPI CDrvUnload()
 {
-    CDrvStop();
-    CDrvUninstall();
-    return 0;
+    DWORD err;
+    
+    err = CDrvStop();
+    if (err)
+        return err;
+
+    err = CDrvUninstall();
+    return err;
 }
