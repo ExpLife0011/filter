@@ -82,7 +82,7 @@ DWORD ScmStartDriver(SC_HANDLE hScm, LPCTSTR DriverName)
 
     if (!StartService(hService, 0, NULL))
     {
-        DWORD err = GetLastError();
+        err = GetLastError();
         if (err == ERROR_SERVICE_ALREADY_RUNNING) {
             printf("Service already running err %d\n", err);
         } else { 
@@ -104,14 +104,14 @@ DWORD ScmStopDriver(SC_HANDLE hScm, LPCTSTR DriverName)
     hService = OpenService (hScm, DriverName, SERVICE_ALL_ACCESS);
     if (hService == NULL)
     {
-        DWORD err = GetLastError();
+        err = GetLastError();
         printf("OpenService error %d\n", GetLastError());
         return err;
     }
 
     if (!ControlService(hService, SERVICE_CONTROL_STOP, &ServiceStatus))
     {
-        DWORD err = GetLastError();
+        err = GetLastError();
         printf("ControlService error %d\n", err);
     } else
         err = 0;

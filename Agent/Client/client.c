@@ -21,12 +21,19 @@ HANDLE CDrvOpen()
     return hDevice;
 }
 
-BOOL 
+DWORD 
 CDrvClose(
     IN HANDLE hDevice
     )
 {
-    return CloseHandle(hDevice);
+    DWORD err;
+
+    if (!CloseHandle(hDevice)) {
+        err = GetLastError();
+        printf("CloseHandle error %d\n", err);
+    } else
+        err = 0;
+    return err;
 }
 
 DWORD NTAPI CDrvCtlFltStart()
@@ -296,9 +303,10 @@ DWORD NTAPI CDrvUnload()
     DWORD err;
     
     err = CDrvStop();
-    if (err)
-        return err;
-
+    if (err) {
+        printf("cant' stop driver service err %d\n", err);
+    }
+    
     err = CDrvUninstall();
     return err;
 }
