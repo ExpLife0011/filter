@@ -22,11 +22,6 @@ VOID SocketFree(PSOCKET Socket)
     NpFree(Socket, MTAG_SOCKET);
 }
 
-VOID SocketReference(PSOCKET Socket)
-{
-    InterlockedIncrement(&Socket->RefCount);
-}
-
 NTSTATUS SocketFactoryInit(PSOCKET_FACTORY SocketFactory)
 {
     NTSTATUS Status;
@@ -70,6 +65,12 @@ NTSTATUS SocketWskDisconnectIrpCompletionRoutine(
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
+
+PWSK_PROVIDER_CONNECTION_DISPATCH WskSocketDispatch(PWSK_SOCKET WskSocket)
+{
+    return (PWSK_PROVIDER_CONNECTION_DISPATCH)WskSocket->Dispatch;
+}
+
 NTSTATUS SocketWskDisconnect(PWSK_SOCKET WskSocket, ULONG Flags)
 {
     KEVENT CompEvent;
@@ -88,7 +89,7 @@ NTSTATUS SocketWskDisconnect(PWSK_SOCKET WskSocket, ULONG Flags)
         SocketWskDisconnectIrpCompletionRoutine,
         &CompEvent, TRUE, TRUE, TRUE);
 
-    Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH)WskSocket->Dispatch)->WskDisconnect(WskSocket, NULL, Flags, Irp);
+    Status = WskSocketDispatch(WskSocket)->WskDisconnect(WskSocket, NULL, Flags, Irp);
     KLDbg("WskDisconnect Status 0x%x", Status);
 
     KeWaitForSingleObject(&CompEvent, Executive, KernelMode, FALSE, NULL);
@@ -134,7 +135,7 @@ NTSTATUS SocketWskClose(PWSK_SOCKET WskSocket)
         SocketWskCloseIrpCompletionRoutine,
         &CompletionEvent, TRUE, TRUE, TRUE);
 
-    Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH)WskSocket->Dispatch)->WskCloseSocket(WskSocket, Irp);
+    Status = WskSocketDispatch(WskSocket)->WskCloseSocket(WskSocket, Irp);
     KLDbg("WskCloseSocket Status 0x%x", Status);
 
     KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
@@ -165,6 +166,9 @@ VOID SocketShutdown(PSOCKET Socket)
 
 VOID SocketDereference(PSOCKET Socket)
 {
+    if (Socket->RefCount <= 0)
+        __debugbreak();
+
     if (0 == InterlockedDecrement(&Socket->RefCount)) {
         SocketShutdown(Socket);
         SocketFree(Socket);
@@ -307,8 +311,8 @@ SocketWskConnectIrpCompletionRoutine(
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
-NTSTATUS SocketFactoryConnectInternal(PSOCKET_FACTORY SocketFactory, USHORT SocketType, ULONG Protocol,
-                                      PSOCKADDR LocalAddr, PSOCKADDR RemoteAddr, PSOCKET *pSocket)
+NTSTATUS SocketConnectInternal(PSOCKET_FACTORY SocketFactory, USHORT SocketType, ULONG Protocol,
+                               PSOCKADDR LocalAddr, PSOCKADDR RemoteAddr, PSOCKET *pSocket)
 {
     PSOCKET Socket;
     PIRP Irp;
@@ -386,7 +390,7 @@ FailAllocIrp:
     return Status;
 }
 
-NTSTATUS SocketFactoryConnect(PSOCKET_FACTORY SocketFactory, PWCHAR Ip, PWCHAR Port, PSOCKET *pSocket)
+NTSTATUS SocketConnect(PSOCKET_FACTORY SocketFactory, PWCHAR Ip, PWCHAR Port, PSOCKET *pSocket)
 {
     NTSTATUS Status;
     SOCKADDR_IN LocalAddr, RemoteAddr;
@@ -398,7 +402,7 @@ NTSTATUS SocketFactoryConnect(PSOCKET_FACTORY SocketFactory, PWCHAR Ip, PWCHAR P
     }
 
     IN4ADDR_SETANY(&LocalAddr);
-    return SocketFactoryConnectInternal(SocketFactory, SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&LocalAddr, (PSOCKADDR)&RemoteAddr, pSocket);
+    return SocketConnectInternal(SocketFactory, SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&LocalAddr, (PSOCKADDR)&RemoteAddr, pSocket);
 }
 
 
@@ -441,6 +445,7 @@ SocketSendInternal(PSOCKET Socket, ULONG Flags, PVOID Buf, ULONG Size, PULONG pS
 
     Mdl = IoAllocateMdl(Buf, Size, FALSE, FALSE, NULL);
     if (Mdl == NULL) {
+        KLErr("No memory");
         Status = STATUS_INSUFFICIENT_RESOURCES;
         goto Cleanup;
     }
@@ -450,28 +455,28 @@ SocketSendInternal(PSOCKET Socket, ULONG Flags, PVOID Buf, ULONG Size, PULONG pS
     WskBuf.Length = Size;
     WskBuf.Mdl = Mdl;
 
-    KLDbg( "Send irp=%p", Irp);
+    KLDbg( "Send irp %p", Irp);
 
-    Status = Socket->WskSocket->Dispatch->WskSend(Socket->WskSocket, &WskBuf, Flags, Irp);
-    KLDbg( "WskSend status %x", Status);
+    Status = WskSocketDispatch(Socket->WskSocket)->WskSend(Socket->WskSocket, &WskBuf, Flags, Irp);
+    KLDbg( "WskSend Status 0x%x", Status);
 
-    Timeout.QuadPart = -10 * 1000 * 1000 * 10;//wait 10sec 
-
+    /* Wait maximum 10 secs */
+    Timeout.QuadPart = -MillisTo100Ns(10000);
     Status = KeWaitForSingleObject(&CompEvent, Executive, KernelMode, FALSE, &Timeout);
     if (Status == STATUS_TIMEOUT) {
         KLErr( "Wait timed out will cancel irp %p", Irp);
         if (!IoCancelIrp(Irp)) {
-            KLErr( "cant cancel irp=%p", Irp);
+            KLErr("Cant cancel irp %p", Irp);
         }
-        KLDbg( "start waiting for event signaled");
+        KLDbg("Start waiting for event signaled");
         KeWaitForSingleObject(&CompEvent, Executive, KernelMode, FALSE, NULL);
-        KLDbg( "waited for event signaled");
+        KLDbg("Waited for event signaled");
     }
 
     Status = Irp->IoStatus.Status;
 
     if (!NT_SUCCESS(Status))
-        KLErr( "send status %x", Status);
+        KLErr("Send Status 0x%x", Status);
 
     if (NT_SUCCESS(Status)) {
         *pSent = (ULONG)Irp->IoStatus.Information;
@@ -496,7 +501,7 @@ SocketSend(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pSent)
     while (Offset < Size) {
         Status = SocketSendInternal(Socket, WSK_FLAG_NODELAY, (PVOID)((ULONG_PTR)Buf + Offset), Size - Offset, &BytesSent);
         if (!NT_SUCCESS(Status)) {
-            KLErr( "send failed with err=%x", Status);
+            KLErr("Send failed with Status 0x%x", Status);
             break;
         }
         Offset += BytesSent;
@@ -546,6 +551,7 @@ SocketReceiveInternal(PSOCKET Socket, ULONG Flags, PVOID Buf, ULONG Size, ULONG 
 
     Mdl = IoAllocateMdl(Buf, Size, FALSE, FALSE, NULL);
     if (Mdl == NULL) {
+        KLErr("No memory");
         Status = STATUS_INSUFFICIENT_RESOURCES;
         goto Cleanup;
     }
@@ -557,10 +563,11 @@ SocketReceiveInternal(PSOCKET Socket, ULONG Flags, PVOID Buf, ULONG Size, ULONG 
 
     KLDbg("Receive irp %p", Irp);
 
-    Status = Socket->WskSocket->Dispatch->WskReceive(Socket->WskSocket, &WskBuf, Flags, Irp);
+    Status = WskSocketDispatch(Socket->WskSocket)->WskReceive(Socket->WskSocket, &WskBuf, Flags, Irp);
     KLDbg("WskReceive Status 0x%x", Status);
 
-    Timeout.QuadPart = -10 * 1000 * 1000 * ((LONG64)10);//wait 10sec
+    /* Wait maximum 10 secs */
+    Timeout.QuadPart = -MillisTo100Ns(10000);
     Status = KeWaitForSingleObject(&CompEvent, Executive, KernelMode, FALSE, &Timeout);
     if (Status == STATUS_TIMEOUT) {
         KLErr( "Wait timed out will cancel irp %p", Irp);
@@ -617,4 +624,20 @@ SocketReceive(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pReceived, PBOOLEAN 
     *pReceived = Offset;
 
     return Status;
+}
+
+VOID
+SocketClose(PSOCKET Socket)
+{
+    PSOCKET_FACTORY SocketFactory = Socket->SocketFactory;
+    KIRQL Irql;
+
+    SocketShutdown(Socket);
+
+    KeAcquireSpinLock(&SocketFactory->Lock, &Irql);
+    RemoveEntryList(&Socket->ListEntry);
+    KeReleaseSpinLock(&SocketFactory->Lock, Irql);
+
+    SocketDereference(Socket);
+    SocketDereference(Socket);
 }

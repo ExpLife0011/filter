@@ -15,13 +15,33 @@ PFBDRIVER GetFbDriver(VOID) {
 
 NTSTATUS FbDriverInit(PFBDRIVER FbDriver)
 {
+    NTSTATUS Status;
+
     UnloadProtectionInit(&FbDriver->UnloadProtection);
-    return WorkerStart(&FbDriver->MainWorker);
+
+    Status = WorkerStart(&FbDriver->MainWorker);
+    if (!NT_SUCCESS(Status)) {
+        KLErr("Can't start main worker Status 0x%x", Status);
+        return Status;
+    }
+
+    Status = SocketFactoryInit(&FbDriver->SocketFactory);
+    if (!NT_SUCCESS(Status)) {
+        KLErr("Can't create socket factory Status 0x%x", Status);
+        goto FailSocketFactoryInit;
+    }
+
+    return Status;
+
+FailSocketFactoryInit:
+    WorkerStop(&FbDriver->MainWorker);
+    return Status;
 }
 
 VOID FbDriverDeinit(PFBDRIVER FbDriver)
 {
     WorkerStop(&FbDriver->MainWorker);
+    SocketFactoryRelease(&FbDriver->SocketFactory);
     if (FbDriver->NtfsDriver)
         ObDereferenceObject(FbDriver->NtfsDriver);
 }

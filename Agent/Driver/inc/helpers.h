@@ -51,11 +51,16 @@ FORCEINLINE VOID PpFree(PVOID Addr, ULONG Tag)
     ExFreePoolWithTag(Addr, Tag);
 }
 
+FORCEINLINE LONG64 MillisTo100Ns(ULONG Millis)
+{
+        return 10*1000*((LONG64)Millis);
+}
+
 FORCEINLINE VOID ThreadSleepMs(ULONG Millis)
 {
     LARGE_INTEGER Interval;
 
-    Interval.QuadPart = -(10 * 1000 * (LONG64)Millis);
+    Interval.QuadPart = -MillisTo100Ns(Millis);
     KeDelayExecutionThread(KernelMode, FALSE, &Interval);
 }
 

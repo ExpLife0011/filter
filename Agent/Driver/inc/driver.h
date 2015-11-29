@@ -4,6 +4,7 @@
 #include "inc\base.h"
 #include "inc\unload_protection.h"
 #include "inc\worker.h"
+#include "inc\socket.h"
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING RegistryPath);
 
@@ -73,6 +74,7 @@ typedef struct _FBDRIVER {
     PDRIVER_OBJECT          NtfsDriver;
     UNLOAD_PROTECTION       UnloadProtection;
     WORKER                  MainWorker;
+    SOCKET_FACTORY          SocketFactory;
 } FBDRIVER, *PFBDRIVER;
 
 PFBDRIVER GetFbDriver(VOID);
