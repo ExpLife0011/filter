@@ -21,6 +21,10 @@ typedef struct _SOCKET {
     volatile LONG                       RefCount;
 } SOCKET, *PSOCKET;
 
+NTSTATUS SocketFactoryInit(PSOCKET_FACTORY SocketFactory);
+
+VOID SocketFactoryRelease(PSOCKET_FACTORY SocketFactory);
+
 FORCEINLINE VOID SocketReference(PSOCKET Socket)
 {
     if (Socket->RefCount <= 0)
@@ -30,16 +34,11 @@ FORCEINLINE VOID SocketReference(PSOCKET Socket)
 
 VOID SocketDereference(PSOCKET Socket);
 
-NTSTATUS SocketFactoryInit(PSOCKET_FACTORY SocketFactory);
-VOID SocketFactoryRelease(PSOCKET_FACTORY SocketFactory);
-
 NTSTATUS SocketConnect(PSOCKET_FACTORY SocketFactory, PWCHAR Ip, PWCHAR Port, PSOCKET *pSocket);
 
-NTSTATUS
-SocketSend(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pSent);
+NTSTATUS SocketSend(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pSent);
 
-NTSTATUS
-SocketReceive(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pReceived, PBOOLEAN pbDisconnected);
+NTSTATUS SocketReceive(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pReceived, PBOOLEAN pbDisconnected);
 
 VOID SocketClose(PSOCKET Socket);
 

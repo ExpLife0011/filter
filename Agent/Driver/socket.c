@@ -43,7 +43,8 @@ NTSTATUS SocketFactoryInit(PSOCKET_FACTORY SocketFactory)
         return Status;
     }
 
-    Status = WskCaptureProviderNPI(&SocketFactory->Registration, WSK_INFINITE_WAIT, &SocketFactory->ProviderNpi);
+    Status = WskCaptureProviderNPI(&SocketFactory->Registration, WSK_INFINITE_WAIT,
+                                   &SocketFactory->ProviderNpi);
     if (!NT_SUCCESS(Status)) {
         WskDeregister(&SocketFactory->Registration);
         KLErr("WskCaptureProviderNPI failed Status 0x%x", Status);
@@ -53,18 +54,13 @@ NTSTATUS SocketFactoryInit(PSOCKET_FACTORY SocketFactory)
     return Status;
 }
 
-NTSTATUS SocketWskDisconnectIrpCompletionRoutine(
-    __in PDEVICE_OBJECT Device,
-    __in PIRP Irp,
-    __in PVOID Context
-)
+NTSTATUS SocketWskDisconnectIrpCompletionRoutine(PDEVICE_OBJECT Device, PIRP Irp, PVOID Context)
 {
     PKEVENT CompletionEvent = (PKEVENT)Context;
 
     KeSetEvent(CompletionEvent, 2, FALSE);
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
-
 
 PWSK_PROVIDER_CONNECTION_DISPATCH WskSocketDispatch(PWSK_SOCKET WskSocket)
 {
@@ -104,12 +100,7 @@ NTSTATUS SocketWskDisconnect(PWSK_SOCKET WskSocket, ULONG Flags)
     return Status;
 }
 
-NTSTATUS
-SocketWskCloseIrpCompletionRoutine(
-    __in PDEVICE_OBJECT Device,
-    __in PIRP Irp,
-    __in PVOID Context
-)
+NTSTATUS SocketWskCloseIrpCompletionRoutine(PDEVICE_OBJECT Device, PIRP Irp, PVOID Context)
 {
     PKEVENT CompletionEvent = (PKEVENT)Context;
 
@@ -201,12 +192,7 @@ VOID SocketFactoryRelease(PSOCKET_FACTORY SocketFactory)
     WskDeregister(&SocketFactory->Registration);
 }
 
-NTSTATUS
-SocketWskResolveNameCompletionRoutine(
-    __in PDEVICE_OBJECT Device,
-    __in PIRP Irp,
-    __in PVOID Context
-)
+NTSTATUS SocketWskResolveNameCompletionRoutine(PDEVICE_OBJECT Device, PIRP Irp, PVOID Context)
 {
     PKEVENT CompletionEvent = (PKEVENT)Context;
 
@@ -214,12 +200,9 @@ SocketWskResolveNameCompletionRoutine(
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
-NTSTATUS SocketFactoryResolveNameInternal(
-    PSOCKET_FACTORY SocketFactory,
-    PUNICODE_STRING NodeName,
-    PUNICODE_STRING ServiceName,
-    PADDRINFOEXW Hints,
-    PSOCKADDR_IN ResolvedAddress)
+NTSTATUS SocketFactoryResolveNameInternal(PSOCKET_FACTORY SocketFactory, PUNICODE_STRING NodeName,
+                                          PUNICODE_STRING ServiceName, PADDRINFOEXW Hints,
+                                          PSOCKADDR_IN ResolvedAddress)
 {
     NTSTATUS Status;
     PIRP Irp;
@@ -275,11 +258,8 @@ NTSTATUS SocketFactoryResolveNameInternal(
     return Status;
 }
 
-NTSTATUS SocketFactoryResolveName(
-    PSOCKET_FACTORY SocketFactory,
-    PWCHAR Ip,
-    PWCHAR Port,
-    PSOCKADDR_IN ResolvedAddress)
+NTSTATUS SocketFactoryResolveName(PSOCKET_FACTORY SocketFactory, PWCHAR Ip, PWCHAR Port,
+                                  PSOCKADDR_IN ResolvedAddress)
 {
     UNICODE_STRING NodeName, ServiceName;
     SOCKADDR_IN Address;
@@ -298,12 +278,7 @@ NTSTATUS SocketFactoryResolveName(
     return Status;
 }
 
-NTSTATUS
-SocketWskConnectIrpCompletionRoutine(
-    __in PDEVICE_OBJECT Device,
-    __in PIRP Irp,
-    __in PVOID Context
-)
+NTSTATUS SocketWskConnectIrpCompletionRoutine(PDEVICE_OBJECT Device, PIRP Irp, PVOID Context)
 {
     PKEVENT CompletionEvent = (PKEVENT)Context;
 
@@ -372,6 +347,7 @@ NTSTATUS SocketConnectInternal(PSOCKET_FACTORY SocketFactory, USHORT SocketType,
     } else {
         SocketReference(Socket);
         InsertHeadList(&SocketFactory->SocketListHead, &Socket->ListEntry);
+        Status = STATUS_SUCCESS;
     }
     KeReleaseSpinLock(&SocketFactory->Lock, Irql);
     if (!NT_SUCCESS(Status))
@@ -405,14 +381,7 @@ NTSTATUS SocketConnect(PSOCKET_FACTORY SocketFactory, PWCHAR Ip, PWCHAR Port, PS
     return SocketConnectInternal(SocketFactory, SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&LocalAddr, (PSOCKADDR)&RemoteAddr, pSocket);
 }
 
-
-static
-NTSTATUS
-SocketWskSendIrpCompletionRoutine(
-__in PDEVICE_OBJECT Device,
-__in PIRP Irp,
-__in PVOID Context
-)
+NTSTATUS SocketWskSendIrpCompletionRoutine(PDEVICE_OBJECT Device, PIRP Irp, PVOID Context)
 {
     PKEVENT CompEvent = (PKEVENT)Context;
 
@@ -420,8 +389,7 @@ __in PVOID Context
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
-NTSTATUS
-SocketSendInternal(PSOCKET Socket, ULONG Flags, PVOID Buf, ULONG Size, PULONG pSent)
+NTSTATUS SocketSendInternal(PSOCKET Socket, ULONG Flags, PVOID Buf, ULONG Size, PULONG pSent)
 {
     WSK_BUF WskBuf;
     KEVENT CompEvent;
@@ -490,8 +458,7 @@ Cleanup:
     return Status;
 }
 
-NTSTATUS
-SocketSend(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pSent)
+NTSTATUS SocketSend(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pSent)
 {
     ULONG BytesSent;
     ULONG Offset;
@@ -512,13 +479,7 @@ SocketSend(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pSent)
     return Status;
 }
 
-static
-NTSTATUS
-SocketWskReceiveIrpCompletionRoutine(
-__in PDEVICE_OBJECT Device,
-__in PIRP Irp,
-__in PVOID Context
-)
+NTSTATUS SocketWskReceiveIrpCompletionRoutine(PDEVICE_OBJECT Device, PIRP Irp, PVOID Context)
 {
     PKEVENT CompEvent = (PKEVENT)Context;
 
@@ -526,8 +487,7 @@ __in PVOID Context
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
-NTSTATUS
-SocketReceiveInternal(PSOCKET Socket, ULONG Flags, PVOID Buf, ULONG Size, ULONG *pReceived)
+NTSTATUS SocketReceiveInternal(PSOCKET Socket, ULONG Flags, PVOID Buf, ULONG Size, ULONG *pReceived)
 {
     WSK_BUF WskBuf;
     KEVENT CompEvent;
@@ -597,8 +557,7 @@ Cleanup:
     return Status;
 }
 
-NTSTATUS
-SocketReceive(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pReceived, PBOOLEAN pbDisconnected)
+NTSTATUS SocketReceive(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pReceived, PBOOLEAN pbDisconnected)
 {
     ULONG BytesRcv;
     ULONG Offset;
@@ -626,8 +585,7 @@ SocketReceive(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pReceived, PBOOLEAN 
     return Status;
 }
 
-VOID
-SocketClose(PSOCKET Socket)
+VOID SocketClose(PSOCKET Socket)
 {
     PSOCKET_FACTORY SocketFactory = Socket->SocketFactory;
     KIRQL Irql;
