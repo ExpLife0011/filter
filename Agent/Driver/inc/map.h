@@ -14,13 +14,16 @@ typedef struct _MAP_ENTRY {
 
 typedef struct _MAP {
     RTL_AVL_TABLE Avl;
+    ERESOURCE Lock;
 } MAP, *PMAP;
 
-VOID MapInit(PMAP Map);
-VOID MapRelease(PMAP Map);
-NTSTATUS MapInsert(PMAP Map, PVOID Key, ULONG KeySize, PVOID Value, ULONG ValueSize);
-NTSTATUS MapSearch(PMAP Map, PVOID Key, ULONG KeySize, PVOID *pValue, ULONG *pValueSize);
-NTSTATUS MapDelete(PMAP Map, PVOID Key, ULONG KeySize);
+PMAP MapCreate(VOID);
+VOID MapDelete(PMAP Map);
+
+NTSTATUS MapInsertKey(PMAP Map, PVOID Key, ULONG KeySize, PVOID Value, ULONG ValueSize);
+NTSTATUS MapLookupKey(PMAP Map, PVOID Key, ULONG KeySize, PVOID *pValue, ULONG *pValueSize);
+NTSTATUS MapDeleteKey(PMAP Map, PVOID Key, ULONG KeySize);
+
 NTSTATUS MapTest(VOID);
 
 #endif
