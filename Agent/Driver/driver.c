@@ -5,6 +5,7 @@
 #include "inc\fastio.h"
 #include "inc\unload_protection.h"
 #include "inc\helpers.h"
+#include "inc\map.h"
 #include "h\ioctl.h"
 
 FBDRIVER g_FbDriver;
@@ -617,6 +618,9 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     PFBDRIVER FbDriver = GetFbDriver();
 
     DPRINT("DriverEntry Driver %p, RegPath %wZ\n", DriverObject, RegistryPath);
+
+    MapTest();
+
     Status = KLogInit();
     if (!NT_SUCCESS(Status)) {
         DPRINT("DriverLibInit failure Status 0x%x\n", Status);

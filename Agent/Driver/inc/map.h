@@ -8,7 +8,8 @@
 typedef struct _MAP_ENTRY {
     ULONG KeySize;
     ULONG ValueSize;
-    UCHAR KeyValue[1];
+    PVOID Key;
+    PVOID Value;
 } MAP_ENTRY, *PMAP_ENTRY;
 
 typedef struct _MAP {
@@ -20,5 +21,6 @@ VOID MapRelease(PMAP Map);
 NTSTATUS MapInsert(PMAP Map, PVOID Key, ULONG KeySize, PVOID Value, ULONG ValueSize);
 NTSTATUS MapSearch(PMAP Map, PVOID Key, ULONG KeySize, PVOID *pValue, ULONG *pValueSize);
 NTSTATUS MapDelete(PMAP Map, PVOID Key, ULONG KeySize);
+NTSTATUS MapTest(VOID);
 
 #endif

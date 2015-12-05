@@ -1,42 +1,9 @@
 #include "inc\map.h"
 
-#define MAP_ENTRY_KEY(MapEntry)     \
-            (PVOID)((ULONG_PTR)(MapEntry) + FIELD_OFFSET(MAP_ENTRY, KeyValue))
-
-#define MAP_ENTRY_VALUE(MapEntry)   \
-            (PVOID)((ULONG_PTR)(MapEntry) + FIELD_OFFSET(MAP_ENTRY, KeyValue) + MapEntry->KeySize)
-
-#define MAP_ENTRY_SIZE(MapEntry)    \
-            (ULONG)(sizeof(*(MapEntry)) - sizeof(MapEntry->KeyValue) + MapEntry->KeySize + MapEntry->ValueSize)
-
-PMAP_ENTRY MapEntryCreate(PVOID Key, ULONG KeySize, PVOID Value, ULONG ValueSize)
-{
-    PMAP_ENTRY MapEntry;
-    
-    MapEntry = ExAllocatePoolWithTag(NonPagedPool, sizeof(*MapEntry) - sizeof(MapEntry->KeyValue) + KeySize + ValueSize,
-                                     MAP_TAG);
-    if (!MapEntry)
-        return NULL;
-
-    MapEntry->KeySize = KeySize;
-    MapEntry->ValueSize = ValueSize;
-    RtlCopyMemory(MAP_ENTRY_KEY(MapEntry), Key, KeySize);
-    if (ValueSize) {
-        RtlCopyMemory(MAP_ENTRY_VALUE(MapEntry), Value, ValueSize);
-    }
-
-    return MapEntry;
-}
-
-VOID MapEntryFree(PMAP_ENTRY MapEntry)
-{
-    ExFreePoolWithTag(MapEntry, MAP_TAG);
-}
-
 RTL_GENERIC_COMPARE_RESULTS
-MapAvlCmpRoutine(PRTL_AVL_TABLE Table, PMAP_ENTRY FirstStruct, PMAP_ENTRY  SecondStruct)
+MapAvlCmpRoutine(PRTL_AVL_TABLE Table, PMAP_ENTRY Entry1, PMAP_ENTRY  Entry2)
 {
-    ULONG Key1Size = FirstStruct->KeySize, Key2Size = SecondStruct->KeySize;
+    ULONG Key1Size = Entry1->KeySize, Key2Size = Entry2->KeySize;
     PUCHAR pKey1, pKey2;
     UCHAR Key1, Key2;
     ULONG Index;
@@ -46,8 +13,8 @@ MapAvlCmpRoutine(PRTL_AVL_TABLE Table, PMAP_ENTRY FirstStruct, PMAP_ENTRY  Secon
     if (Key1Size > Key2Size)
         return GenericGreaterThan;
 
-    pKey1 = MAP_ENTRY_KEY(FirstStruct);
-    pKey2 = MAP_ENTRY_KEY(SecondStruct);
+    pKey1 = Entry1->Key;
+    pKey2 = Entry2->Key;
 
     for (Index = 0; Index < Key1Size; Index++) {
         Key1 = pKey1[Index];
@@ -68,6 +35,11 @@ PVOID MapAvlAllocRoutine(PRTL_AVL_TABLE Table, ULONG ByteSize)
 
 VOID MapAvlFreeRoutine(PRTL_AVL_TABLE  Table, PVOID  Buffer)
 {
+    PMAP_ENTRY Entry = (PMAP_ENTRY)((ULONG_PTR)Buffer + sizeof(RTL_BALANCED_LINKS));
+
+    ExFreePoolWithTag(Entry->Key, MAP_TAG);
+    ExFreePoolWithTag(Entry->Value, MAP_TAG);
+
     ExFreePoolWithTag(Buffer, MAP_TAG);
 }
 
@@ -78,19 +50,19 @@ VOID MapInit(PMAP Map)
 
 VOID MapRelease(PMAP Map)
 {
-    PMAP_ENTRY MapEntry;
+    PMAP_ENTRY Entry;
 
     do {
-        MapEntry = (PMAP_ENTRY)RtlEnumerateGenericTableAvl(&Map->Avl, TRUE);
-        if (MapEntry) {
-            RtlDeleteElementGenericTableAvl(&Map->Avl, MapEntry);
+        Entry = (PMAP_ENTRY)RtlEnumerateGenericTableAvl(&Map->Avl, TRUE);
+        if (Entry) {
+            RtlDeleteElementGenericTableAvl(&Map->Avl, Entry);
         }
-    } while (MapEntry);
+    } while (Entry);
 }
 
 NTSTATUS MapInsert(PMAP Map, PVOID Key, ULONG KeySize, PVOID Value, ULONG ValueSize)
 {
-    PMAP_ENTRY MapEntry;
+    MAP_ENTRY Entry;
     BOOLEAN NewEntry;
     NTSTATUS Status;
     PVOID Result;
@@ -98,12 +70,20 @@ NTSTATUS MapInsert(PMAP Map, PVOID Key, ULONG KeySize, PVOID Value, ULONG ValueS
     if (!Key || !Value || !KeySize || !ValueSize)
         return STATUS_INVALID_PARAMETER;
 
-    MapEntry = MapEntryCreate(Key, KeySize, Value, ValueSize);
-    if (!MapEntry)
+    Entry.Key = ExAllocatePoolWithTag(NonPagedPool, KeySize, MAP_TAG);
+    if (!Entry.Key)
         return STATUS_INSUFFICIENT_RESOURCES;
+    Entry.Value = ExAllocatePoolWithTag(NonPagedPool, ValueSize, MAP_TAG);
+    if (!Entry.Value) {
+        ExFreePoolWithTag(Entry.Key, MAP_TAG);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    RtlCopyMemory(Entry.Key, Key, KeySize);
+    RtlCopyMemory(Entry.Value, Value, ValueSize);
+    Entry.KeySize = KeySize;
+    Entry.ValueSize = ValueSize;
 
-    Result = RtlInsertElementGenericTableAvl(&Map->Avl, MapEntry, MAP_ENTRY_SIZE(MapEntry), &NewEntry);
-    MapEntryFree(MapEntry);
+    Result = RtlInsertElementGenericTableAvl(&Map->Avl, &Entry, sizeof(Entry), &NewEntry);
     if (!Result) {
         Status = STATUS_INSUFFICIENT_RESOURCES;
     } else {
@@ -113,20 +93,26 @@ NTSTATUS MapInsert(PMAP Map, PVOID Key, ULONG KeySize, PVOID Value, ULONG ValueS
             Status = STATUS_SUCCESS;
     }
 
+    if (!NT_SUCCESS(Status)) {
+        ExFreePoolWithTag(Entry.Key, MAP_TAG);
+        ExFreePoolWithTag(Entry.Value, MAP_TAG);
+    }
+
     return Status;
 }
 
 NTSTATUS MapSearch(PMAP Map, PVOID Key, ULONG KeySize, PVOID *pValue, ULONG *pValueSize)
 {
-    PMAP_ENTRY KeyEntry, FoundEntry;
+    MAP_ENTRY Entry;
+    PMAP_ENTRY FoundEntry;
     PVOID Value;
 
-    KeyEntry = MapEntryCreate(Key, KeySize, NULL, 0);
-    if (!KeyEntry)
-        return STATUS_INSUFFICIENT_RESOURCES;
-
-    FoundEntry = RtlLookupElementGenericTableAvl(&Map->Avl, KeyEntry);
-    MapEntryFree(KeyEntry);
+    Entry.Key = Key;
+    Entry.KeySize = KeySize;
+    Entry.Value = NULL;
+    Entry.ValueSize = 0;
+    
+    FoundEntry = RtlLookupElementGenericTableAvl(&Map->Avl, &Entry);
     if (!FoundEntry)
         return STATUS_OBJECT_NAME_NOT_FOUND;
 
@@ -134,7 +120,7 @@ NTSTATUS MapSearch(PMAP Map, PVOID Key, ULONG KeySize, PVOID *pValue, ULONG *pVa
     if (!Value)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    RtlCopyMemory(Value, MAP_ENTRY_VALUE(FoundEntry), FoundEntry->ValueSize);
+    RtlCopyMemory(Value, FoundEntry->Value, FoundEntry->ValueSize);
     *pValue = Value;
     *pValueSize = FoundEntry->ValueSize;
     return STATUS_SUCCESS;
@@ -142,21 +128,95 @@ NTSTATUS MapSearch(PMAP Map, PVOID Key, ULONG KeySize, PVOID *pValue, ULONG *pVa
 
 NTSTATUS MapDelete(PMAP Map, PVOID Key, ULONG KeySize)
 {
-    PMAP_ENTRY KeyEntry;
+    MAP_ENTRY Entry;
     NTSTATUS Status;
     BOOLEAN Deleted;
 
-    KeyEntry = MapEntryCreate(Key, KeySize, NULL, 0);
-    if (!KeyEntry)
-        return STATUS_INSUFFICIENT_RESOURCES;
+    Entry.Key = Key;
+    Entry.KeySize = KeySize;
+    Entry.Value = NULL;
+    Entry.ValueSize = 0;
 
-    Deleted = RtlDeleteElementGenericTableAvl(&Map->Avl, KeyEntry);
-    MapEntryFree(KeyEntry);
-
+    Deleted = RtlDeleteElementGenericTableAvl(&Map->Avl, &Entry);
     if (Deleted)
         Status = STATUS_SUCCESS;
     else
         Status = STATUS_OBJECT_NAME_NOT_FOUND;
 
+    return Status;
+}
+
+typedef struct _SID_KV {
+    CHAR *Key;
+    CHAR *Value;
+} SID_KV, *PSID_KV;
+
+NTSTATUS MapTest(VOID)
+{
+    NTSTATUS Status;
+    PVOID Value;
+    MAP Map;
+    ULONG Index, ValueSize;
+    SID_KV TestKvs[] = {{"S-1-0-0", "SID0"},
+                        {"S-1-1-0", "SID1"},
+                        {"S-1-0", "SID2"},
+                        {"S-1-1", "SID3"},
+                        {"S-1-5-21-1180699209-877415012-3182924384-1004", "BIG-SID4"},
+                        {"S-1-5-20", "SID5"},
+                        {"S-1-5-21-1180699209-111115012-3182924384-1004", "Another-BIG-SID6"}};
+    MapInit(&Map);
+    for (Index = 0; Index < RTL_NUMBER_OF(TestKvs); Index++) {
+        Status = MapInsert(&Map, TestKvs[Index].Key, (ULONG)(strlen(TestKvs[Index].Key) + 1),
+                                 TestKvs[Index].Value, (ULONG)(strlen(TestKvs[Index].Value) + 1));
+        if (!NT_SUCCESS(Status)) {
+            DbgPrint("MapInsert failed Status 0x%x\n", Status);
+            goto cleanup;
+        }
+    }
+
+    /* Try to insert key 4 again */
+    Status = MapInsert(&Map, TestKvs[4].Key, (ULONG)(strlen(TestKvs[4].Key) + 1),
+                             TestKvs[4].Value, (ULONG)(strlen(TestKvs[4].Value) + 1));
+    if (Status != STATUS_OBJECT_NAME_COLLISION) {
+        Status = STATUS_UNSUCCESSFUL;
+        DbgPrint("MapInsert duplicate Status 0x%x\n", Status);
+        goto cleanup;
+    }
+
+    /* Delete key 5 */
+    Status = MapDelete(&Map, TestKvs[5].Key, (ULONG)(strlen(TestKvs[5].Key) + 1));
+    if (!NT_SUCCESS(Status)) {
+        DbgPrint("MapDelete Status 0x%x\n", Status);
+        goto cleanup;
+    }
+    
+    for (Index = 0; Index < RTL_NUMBER_OF(TestKvs); Index++) {
+        /* Skip key 5 because it's already deleted */
+        if (Index == 5)
+            continue;
+        Status = MapSearch(&Map, TestKvs[Index].Key, (ULONG)(strlen(TestKvs[Index].Key) + 1), &Value, &ValueSize);
+        if (!NT_SUCCESS(Status)) {
+            DbgPrint("MapSearch failed Status 0x%x\n", Status);
+            goto cleanup;
+        }
+
+        if (ValueSize != (strlen(TestKvs[Index].Value) + 1)) {
+            DbgPrint("MapSearch returned invalid ValueSize 0x%x\n", ValueSize);
+            ExFreePoolWithTag(Value, MAP_TAG);
+            Status = STATUS_UNSUCCESSFUL;
+            goto cleanup;
+        }
+        if (ValueSize != RtlCompareMemory(Value, TestKvs[Index].Value, ValueSize)) {
+            DbgPrint("MapSearch returned invalid Value content\n");
+            ExFreePoolWithTag(Value, MAP_TAG);
+            Status = STATUS_UNSUCCESSFUL;
+            goto cleanup;            
+        }
+        ExFreePoolWithTag(Value, MAP_TAG);
+    }
+    Status = STATUS_SUCCESS;
+cleanup:
+    DbgPrint("MapTest Status 0x%x\n", Status);
+    MapRelease(&Map);
     return Status;
 }
