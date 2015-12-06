@@ -222,7 +222,7 @@ NTSTATUS MapTest(VOID)
         Status = MapInsertKey(Map, TestKvs[Index].Key, (ULONG)(strlen(TestKvs[Index].Key) + 1),
                               TestKvs[Index].Value, (ULONG)(strlen(TestKvs[Index].Value) + 1));
         if (!NT_SUCCESS(Status)) {
-            DbgPrint("MapInsert failed Status 0x%x\n", Status);
+            DbgPrint("MapInsertKey failed Status 0x%x\n", Status);
             goto cleanup;
         }
     }
@@ -232,14 +232,14 @@ NTSTATUS MapTest(VOID)
                           TestKvs[4].Value, (ULONG)(strlen(TestKvs[4].Value) + 1));
     if (Status != STATUS_OBJECT_NAME_COLLISION) {
         Status = STATUS_UNSUCCESSFUL;
-        DbgPrint("MapInsert duplicate Status 0x%x\n", Status);
+        DbgPrint("MapInsertKey duplicate Status 0x%x\n", Status);
         goto cleanup;
     }
 
     /* Delete key 5 */
     Status = MapDeleteKey(Map, TestKvs[5].Key, (ULONG)(strlen(TestKvs[5].Key) + 1));
     if (!NT_SUCCESS(Status)) {
-        DbgPrint("MapDelete Status 0x%x\n", Status);
+        DbgPrint("MapDeleteKey Status 0x%x\n", Status);
         goto cleanup;
     }
 
@@ -249,18 +249,18 @@ NTSTATUS MapTest(VOID)
             continue;
         Status = MapLookupKey(Map, TestKvs[Index].Key, (ULONG)(strlen(TestKvs[Index].Key) + 1), &Value, &ValueSize);
         if (!NT_SUCCESS(Status)) {
-            DbgPrint("MapSearch failed Status 0x%x\n", Status);
+            DbgPrint("MapLookupKey failed Status 0x%x\n", Status);
             goto cleanup;
         }
 
         if (ValueSize != (strlen(TestKvs[Index].Value) + 1)) {
-            DbgPrint("MapSearch returned invalid ValueSize 0x%x\n", ValueSize);
+            DbgPrint("MapLookupKey returned invalid ValueSize 0x%x\n", ValueSize);
             ExFreePoolWithTag(Value, MAP_TAG);
             Status = STATUS_UNSUCCESSFUL;
             goto cleanup;
         }
         if (ValueSize != RtlCompareMemory(Value, TestKvs[Index].Value, ValueSize)) {
-            DbgPrint("MapSearch returned invalid Value content\n");
+            DbgPrint("MapLookupKey returned invalid Value content\n");
             ExFreePoolWithTag(Value, MAP_TAG);
             Status = STATUS_UNSUCCESSFUL;
             goto cleanup;            
