@@ -1,4 +1,5 @@
 #include "inc\map.h"
+#include "inc\klog.h"
 
 RTL_GENERIC_COMPARE_RESULTS
 MapAvlCmpRoutine(PRTL_AVL_TABLE Table, PMAP_ENTRY Entry1, PMAP_ENTRY  Entry2)
@@ -191,85 +192,5 @@ NTSTATUS MapDeleteKey(PMAP Map, PVOID Key, ULONG KeySize)
     else
         Status = STATUS_OBJECT_NAME_NOT_FOUND;
 
-    return Status;
-}
-
-typedef struct _SID_KV {
-    CHAR *Key;
-    CHAR *Value;
-} SID_KV, *PSID_KV;
-
-NTSTATUS MapTest(VOID)
-{
-    NTSTATUS Status;
-    PVOID Value;
-    PMAP Map;
-    ULONG Index, ValueSize;
-    SID_KV TestKvs[] = {{"S-1-0-0", "SID0"},
-                        {"S-1-1-0", "SID1"},
-                        {"S-1-0", "SID2"},
-                        {"S-1-1", "SID3"},
-                        {"S-1-5-21-1180699209-877415012-3182924384-1004", "BIG-SID4"},
-                        {"S-1-5-20", "SID5"},
-                        {"S-1-5-21-1180699209-111115012-3182924384-1004", "Another-BIG-SID6"}};
-    Map = MapCreate();
-    if (!Map) {
-        DbgPrint("Can't create map\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    for (Index = 0; Index < RTL_NUMBER_OF(TestKvs); Index++) {
-        Status = MapInsertKey(Map, TestKvs[Index].Key, (ULONG)(strlen(TestKvs[Index].Key) + 1),
-                              TestKvs[Index].Value, (ULONG)(strlen(TestKvs[Index].Value) + 1));
-        if (!NT_SUCCESS(Status)) {
-            DbgPrint("MapInsertKey failed Status 0x%x\n", Status);
-            goto cleanup;
-        }
-    }
-
-    /* Try to insert key 4 again */
-    Status = MapInsertKey(Map, TestKvs[4].Key, (ULONG)(strlen(TestKvs[4].Key) + 1),
-                          TestKvs[4].Value, (ULONG)(strlen(TestKvs[4].Value) + 1));
-    if (Status != STATUS_OBJECT_NAME_COLLISION) {
-        Status = STATUS_UNSUCCESSFUL;
-        DbgPrint("MapInsertKey duplicate Status 0x%x\n", Status);
-        goto cleanup;
-    }
-
-    /* Delete key 5 */
-    Status = MapDeleteKey(Map, TestKvs[5].Key, (ULONG)(strlen(TestKvs[5].Key) + 1));
-    if (!NT_SUCCESS(Status)) {
-        DbgPrint("MapDeleteKey Status 0x%x\n", Status);
-        goto cleanup;
-    }
-
-    for (Index = 0; Index < RTL_NUMBER_OF(TestKvs); Index++) {
-        /* Skip key 5 because it's already deleted */
-        if (Index == 5)
-            continue;
-        Status = MapLookupKey(Map, TestKvs[Index].Key, (ULONG)(strlen(TestKvs[Index].Key) + 1), &Value, &ValueSize);
-        if (!NT_SUCCESS(Status)) {
-            DbgPrint("MapLookupKey failed Status 0x%x\n", Status);
-            goto cleanup;
-        }
-
-        if (ValueSize != (strlen(TestKvs[Index].Value) + 1)) {
-            DbgPrint("MapLookupKey returned invalid ValueSize 0x%x\n", ValueSize);
-            ExFreePoolWithTag(Value, MAP_TAG);
-            Status = STATUS_UNSUCCESSFUL;
-            goto cleanup;
-        }
-        if (ValueSize != RtlCompareMemory(Value, TestKvs[Index].Value, ValueSize)) {
-            DbgPrint("MapLookupKey returned invalid Value content\n");
-            ExFreePoolWithTag(Value, MAP_TAG);
-            Status = STATUS_UNSUCCESSFUL;
-            goto cleanup;            
-        }
-        ExFreePoolWithTag(Value, MAP_TAG);
-    }
-    Status = STATUS_SUCCESS;
-cleanup:
-    DbgPrint("MapTest Status 0x%x\n", Status);
-    MapDelete(Map);
     return Status;
 }

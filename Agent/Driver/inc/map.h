@@ -24,6 +24,4 @@ NTSTATUS MapInsertKey(PMAP Map, PVOID Key, ULONG KeySize, PVOID Value, ULONG Val
 NTSTATUS MapLookupKey(PMAP Map, PVOID Key, ULONG KeySize, PVOID *pValue, ULONG *pValueSize);
 NTSTATUS MapDeleteKey(PMAP Map, PVOID Key, ULONG KeySize);
 
-NTSTATUS MapTest(VOID);
-
 #endif

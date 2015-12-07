@@ -1,6 +1,7 @@
 #include "inc\socket.h"
 #include "inc\klog.h"
 #include "inc\mtags.h"
+#include "inc\worker.h"
 
 PSOCKET SocketAlloc(PSOCKET_FACTORY SocketFactory)
 {
@@ -258,19 +259,19 @@ NTSTATUS SocketFactoryResolveNameInternal(PSOCKET_FACTORY SocketFactory, PUNICOD
     return Status;
 }
 
-NTSTATUS SocketFactoryResolveName(PSOCKET_FACTORY SocketFactory, PWCHAR Ip, PWCHAR Port,
+NTSTATUS SocketFactoryResolveName(PSOCKET_FACTORY SocketFactory, PWCHAR HostName, PWCHAR Port,
                                   PSOCKADDR_IN ResolvedAddress)
 {
     UNICODE_STRING NodeName, ServiceName;
     SOCKADDR_IN Address;
     NTSTATUS Status;
 
-    RtlInitUnicodeString(&NodeName, Ip);
+    RtlInitUnicodeString(&NodeName, HostName);
     RtlInitUnicodeString(&ServiceName, Port);
 
     Status = SocketFactoryResolveNameInternal(SocketFactory, &NodeName, &ServiceName, NULL, &Address);
     if (!NT_SUCCESS(Status)) {
-        KLErr("Can't resolve Ip %ws Port %ws Status 0x%x", Ip, Port, Status);
+        KLErr("Can't resolve HostName %ws Port %ws Status 0x%x", HostName, Port, Status);
         return Status;
     }
 
@@ -366,14 +367,14 @@ FailAllocIrp:
     return Status;
 }
 
-NTSTATUS SocketConnect(PSOCKET_FACTORY SocketFactory, PWCHAR Ip, PWCHAR Port, PSOCKET *pSocket)
+NTSTATUS SocketConnect(PSOCKET_FACTORY SocketFactory, PWCHAR HostName, PWCHAR Port, PSOCKET *pSocket)
 {
     NTSTATUS Status;
     SOCKADDR_IN LocalAddr, RemoteAddr;
 
-    Status = SocketFactoryResolveName(SocketFactory, Ip, Port, &RemoteAddr);
+    Status = SocketFactoryResolveName(SocketFactory, HostName, Port, &RemoteAddr);
     if (!NT_SUCCESS(Status)) {
-        KLErr("Can't resolve Ip %ws Port %ws Status 0x%x", Ip, Port, Status);
+        KLErr("Can't resolve HostName %ws Port %ws Status 0x%x", HostName, Port, Status);
         return Status;
     }
 

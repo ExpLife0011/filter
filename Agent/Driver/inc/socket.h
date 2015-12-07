@@ -34,7 +34,7 @@ FORCEINLINE VOID SocketReference(PSOCKET Socket)
 
 VOID SocketDereference(PSOCKET Socket);
 
-NTSTATUS SocketConnect(PSOCKET_FACTORY SocketFactory, PWCHAR Ip, PWCHAR Port, PSOCKET *pSocket);
+NTSTATUS SocketConnect(PSOCKET_FACTORY SocketFactory, PWCHAR HostName, PWCHAR Port, PSOCKET *pSocket);
 
 NTSTATUS SocketSend(PSOCKET Socket, PVOID Buf, ULONG Size, PULONG pSent);
 
