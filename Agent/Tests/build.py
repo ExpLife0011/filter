@@ -105,9 +105,17 @@ CLIENT_DIR=os.path.join(PROJ_ROOT, "Client")
 CLIENT_OUT=CLIENT_NAME + ".exe"
 CLIENT_OUT_PDB=CLIENT_NAME + ".pdb"
 
+SERVER_NAME="FBackupServer"
+SERVER_BUILD_TMP=os.path.join(BUILD_TMP, SERVER_NAME + "\\x64")
+SERVER_DIR=os.path.join(PROJ_ROOT, "Server")
+SERVER_OUT=SERVER_NAME + ".exe"
+SERVER_OUT_PDB=SERVER_NAME + ".pdb"
+
 DRIVER_SOURCES = ["driver.c", "klog.c", "fastio.c", "helpers.c", "worker.c", "socket.c", "map.c", "tests.c"]
 
 CLIENT_SOURCES = ["client.c", "scmload.c", "main.c"]
+
+SERVER_SOURCES = ["log.c", "main.c"]
 
 TARGET_WIN7 = "win7"
 TARGET_WIN8 = "win8"
@@ -203,38 +211,34 @@ def build_client(elog, build_dir, tmp_dir, target):
         cmd+= " " + quote_path(os.path.join(tmp_dir, fobj))
     do_cmd(cmd, elog)
 
-def rebuild(elog, target):
-    os.system("taskkill /F /im mspdbsrv.exe")
-    rc = 1
-    if os.path.exists(BUILD):
-        do_cmd("rmdir /s /q " + BUILD, elog)
-    if os.path.exists(BUILD_TMP):
-        do_cmd("rmdir /s /q " + BUILD_TMP, elog)
+def build_server(elog, build_dir, tmp_dir, target):
+    cmd = quote_path(CL_EXE) + " /c"
+    cmd+= inc_path(WDK_INC_UM)
+    cmd+= inc_path(WDK_INC_KM_CRT)
+    cmd+= inc_path(WDK_INC_SHARED)
+    cmd+= inc_path(PROJ_ROOT)
+    cmd+=" /Fo" + quote_path(tmp_dir) + "\\"
+#    cmd+= " /Fd" + quote_path(os.path.join(tmp_dir, "vc120.pdb"))
+    cmd+=" " + UCL_OPTS + " " + UCL_D_OPTS + " " + UCL_ARCH_D_OPTS + " " + CL_VER_OPTS_BY_TARGET[target]
+    for f in SERVER_SOURCES:
+        cmd+= " " + quote_path(os.path.join(SERVER_DIR, f))
+    do_cmd(cmd, elog)
 
-    do_cmd("mkdir " + BUILD, elog)
-    do_cmd("mkdir " + BUILD_TMP, elog)
-    odir = os.getcwd()
-    os.chdir(BUILD_TMP)
-    try:
-        for f in VS_BUILD_BINS:
-            do_copy_file(os.path.join(VS_BIN_PATH, f), os.path.join(BUILD_TMP, f), elog)
-
-        for f in WDK_BUILD_BINS:
-            do_copy_file(os.path.join(WDK_BIN, f), os.path.join(BUILD_TMP, f), elog)
-
-        do_cmd("mkdir " + BUILD_OUT_DIR, elog)
-        do_cmd("mkdir " + DRIVER_BUILD_TMP, elog)
-        do_cmd("mkdir " + CLIENT_BUILD_TMP, elog)
-
-        build_driver(elog, target)
-        build_client(elog, target)
-        rc = 0
-    except Exception as e:
-        elog.exception(str(e))
-    finally:
-        os.chdir(odir)
-    elog.info("build completed with rc %d" % (rc,))
-    return rc
+    cmd = quote_path(LINK_EXE)
+    cmd+= " /OUT:" + quote_path(os.path.join(build_dir, SERVER_OUT)) + " " + ULINK_OPTS + " " + ULINK_ARCH_OPTS + " " + ULINK_VERSION
+    cmd+= " " + ULINK_SUBSYSTEM + "," + SUBSYSTEM_VER_BY_TARGET[target]
+    cmd+= " /osversion:" + OSVERSION_BY_TARGET[target]
+    cmd+= " /PDB:" + quote_path(os.path.join(build_dir, SERVER_OUT_PDB))
+    for l in UWDK_LIBS:
+        cmd+= " " + quote_path(os.path.join(WDK_UM_LIB, l))
+    for l in UVS_LIBS:
+        cmd+= " " + quote_path(os.path.join(VS_LIB_PATH, l))
+    for l in UCRT_LIBS:
+        cmd+= " " + quote_path(os.path.join(SDK_UCRT_LIB, l))
+    for f in SERVER_SOURCES:
+        fobj = replace_ext(f, ".obj")
+        cmd+= " " + quote_path(os.path.join(tmp_dir, fobj))
+    do_cmd(cmd, elog)
 
 def make_dirs(dirs, elog):
     for d in dirs:
@@ -248,9 +252,11 @@ def rebuild_target(elog, build_dir, tmp_dir, target):
     make_dirs([bdir, tdir], elog)
     driver_tdir = os.path.join(tdir, "driver")
     client_tdir = os.path.join(tdir, "client")
-    make_dirs([client_tdir, driver_tdir], elog)
+    server_tdir = os.path.join(tdir, "server")
+    make_dirs([client_tdir, driver_tdir, server_tdir], elog)
     build_driver(elog, bdir, client_tdir, target)
     build_client(elog, bdir, driver_tdir, target)
+    build_server(elog, bdir, server_tdir, target)
 
 def rebuild(elog, target):
     odir = None
