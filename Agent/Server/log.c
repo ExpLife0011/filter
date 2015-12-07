@@ -71,7 +71,6 @@ DWORD LogWriteEntry(PLOG_CONTEXT LogCtx, PLOG_ENTRY LogEntry)
         }
         WrittenTotal+= Written;
     }
-
     return 0;
 }
 
@@ -113,6 +112,9 @@ DWORD LogThreadRoutine(PLOG_CONTEXT LogCtx)
 
 DWORD LogInit(PLOG_CONTEXT LogCtx, PWCHAR FilePath)
 {
+    DWORD Err;
+    LARGE_INTEGER Offset;
+
     memset(LogCtx, 0, sizeof(*LogCtx));
 
     InitializeListHead(&LogCtx->ListHead);
@@ -121,25 +123,38 @@ DWORD LogInit(PLOG_CONTEXT LogCtx, PWCHAR FilePath)
 
     LogCtx->hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
     if (!LogCtx->hEvent) {
-        return GetLastError();
+        Err = GetLastError();
+        goto fail_delete_critical_section;
     }
 
-    LogCtx->hFile = CreateFile(LogCtx->FilePath, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    LogCtx->hFile = CreateFile(LogCtx->FilePath, FILE_GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE,
+                               NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (LogCtx->hFile == INVALID_HANDLE_VALUE) {
-        CloseHandle(LogCtx->hEvent);
-        DeleteCriticalSection(&LogCtx->Lock);
-        return GetLastError();
+        Err = GetLastError();
+        goto fail_close_event;
+    }
+
+    Offset.QuadPart = 0;
+    if (!SetFilePointerEx(LogCtx->hFile, Offset, NULL, FILE_END)) {
+        Err = GetLastError();
+        goto fail_close_file;
     }
 
     LogCtx->hThread = CreateThread(NULL, 0, LogThreadRoutine, LogCtx, 0, NULL);
     if (!LogCtx->hThread) {
-        CloseHandle(LogCtx->hEvent);
-        CloseHandle(LogCtx->hFile);
-        DeleteCriticalSection(&LogCtx->Lock);
-        return GetLastError();
+        Err = GetLastError();
+        goto fail_close_file;
     }
 
     return 0;
+
+fail_close_file:
+    CloseHandle(LogCtx->hFile);
+fail_close_event:
+    CloseHandle(LogCtx->hEvent);
+fail_delete_critical_section:
+    DeleteCriticalSection(&LogCtx->Lock);
+    return Err;
 }
 
 VOID LogRelease(PLOG_CONTEXT LogCtx)
@@ -224,7 +239,7 @@ VOID Log(PLOG_CONTEXT LogCtx, ULONG Level, PCHAR File, ULONG Line, PCHAR Func, P
              Time.wHour, Time.wMinute,
              Time.wSecond, Time.wMilliseconds);
 
-    WriteMsg(&BufPos, &BufLeft,"t%x", GetCurrentThreadId());
+    WriteMsg(&BufPos, &BufLeft,"p%d t%d", GetCurrentProcessId(), GetCurrentThreadId());
     WriteMsg(&BufPos, &BufLeft," %s():%s:%d: ", Func, TruncatePath(File), Line);
 
     WriteMsg2(&BufPos, &BufLeft, Fmt, Args);
