@@ -85,7 +85,7 @@ UVS_LIBS=["libcmt.lib", "oldnames.lib", "libvcruntime.lib", "legacy_stdio_defini
 UCRT_LIBS = ["libucrt.lib"]
 
 UWDK_LIBS=["BufferOverflowU.lib", "kernel32.lib", "user32.lib", "gdi32.lib", "winspool.lib", "comdlg32.lib",
-            "advapi32.lib", "shell32.lib", "ole32.lib", "oleaut32.lib", "uuid.lib", "odbc32.lib", "odbccp32.lib"]
+            "advapi32.lib", "shell32.lib", "ole32.lib", "oleaut32.lib", "uuid.lib", "odbc32.lib", "odbccp32.lib", "ws2_32.lib"]
 
 VS_BUILD_BINS= ["mspdb140.dll", "mspdbcore.dll", "mspdbsrv.exe", "msobj140.dll", "cvtres.exe"]
 WDK_BUILD_BINS= ["rc.exe", "rcdll.dll"]
