@@ -8,6 +8,7 @@ typedef struct _SVC_CONTEXT {
     SERVICE_STATUS          Status; 
     SERVICE_STATUS_HANDLE   StatusHandle; 
     HANDLE                  hStopEvent;
+    HANDLE                  hStoppedEvent;
     volatile LONG           Stopping;
 } SVC_CONTEXT, *PSVC_CONTEXT;
 
@@ -54,13 +55,39 @@ VOID SvcRun(DWORD argc, WCHAR *argv[])
         return;
     }
 
-    ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0);
+    SvcContext->hStoppedEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (!SvcContext->hStoppedEvent) {
+        LErr("Cant create event Error %d", GetLastError());
+        CloseHandle(SvcContext->hStopEvent);
+        ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0);
+        return;
+    }
+
+    ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
     LInf("Starting stop waiting");
     while(!SvcContext->Stopping) {
         WaitForSingleObject(SvcContext->hStopEvent, INFINITE);
     }
+
     LInf("Stopping");
+
+    ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+    SetEvent(SvcContext->hStoppedEvent);
     ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0);
+
+    LInf("Stopped");
+
+    CloseHandle(SvcContext->hStopEvent);
+    CloseHandle(SvcContext->hStoppedEvent);
+}
+
+VOID SvcStop()
+{
+    PSVC_CONTEXT SvcContext = GetSvcContext();
+
+    SvcContext->Stopping = 1;
+    SetEvent(SvcContext->hStopEvent);
+    WaitForSingleObject(SvcContext->hStoppedEvent, INFINITE);
 }
 
 VOID SvcCtrlHandler(DWORD dwCtrl)
@@ -71,14 +98,10 @@ VOID SvcCtrlHandler(DWORD dwCtrl)
 
     switch(dwCtrl) {  
     case SERVICE_CONTROL_STOP:
-        ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
-        SetEvent(SvcContext->hStopEvent);
-        ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
+        SvcStop();
         return;
     case SERVICE_CONTROL_SHUTDOWN:
-        ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
-        SetEvent(SvcContext->hStopEvent);
-        ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
+        SvcStop();
         return;
     case SERVICE_CONTROL_INTERROGATE: 
         break; 

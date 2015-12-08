@@ -58,7 +58,36 @@ PCHAR TruncatePath(PCHAR FileName)
         return FileName;
 }
 
-DWORD LogWriteEntry(PLOG_CONTEXT LogCtx, PLOG_ENTRY LogEntry)
+DWORD LogFileSetPointerToEnd(PLOG_CONTEXT LogCtx)
+{
+    LARGE_INTEGER Offset;
+
+    Offset.QuadPart = 0;
+    if (!SetFilePointerEx(LogCtx->hFile, Offset, NULL, FILE_END))
+        return GetLastError();
+    return 0;
+}
+
+DWORD LogFileLock(PLOG_CONTEXT LogCtx)
+{
+    OVERLAPPED Overlapped;
+
+    memset(&Overlapped, 0, sizeof(Overlapped));
+    if (!LockFileEx(LogCtx->hFile, LOCKFILE_EXCLUSIVE_LOCK, 0, 0xFFFFFFFF, 0xFFFFFFFF, &Overlapped))
+        return GetLastError();
+
+    return 0;
+}
+
+VOID LogFileUnlock(PLOG_CONTEXT LogCtx)
+{
+    OVERLAPPED Overlapped;
+
+    memset(&Overlapped, 0, sizeof(Overlapped));
+    UnlockFileEx(LogCtx->hFile, 0, 0xFFFFFFFF, 0xFFFFFFFF, &Overlapped);
+}
+
+DWORD LogFileWriteEntry(PLOG_CONTEXT LogCtx, PLOG_ENTRY LogEntry)
 {
     DWORD WrittenTotal = 0;
     DWORD Written;
@@ -67,44 +96,60 @@ DWORD LogWriteEntry(PLOG_CONTEXT LogCtx, PLOG_ENTRY LogEntry)
         if (!WriteFile(LogCtx->hFile, LogEntry->Buf + WrittenTotal,
                        LogEntry->BufUsed - WrittenTotal, &Written, NULL)) {
             return GetLastError();
-            break;
         }
         WrittenTotal+= Written;
     }
+
     return 0;
 }
 
-DWORD LogThreadRoutine(PLOG_CONTEXT LogCtx)
+VOID LogWriteExistingEntries(PLOG_CONTEXT LogCtx, BOOL IgnoreStopping)
 {
     LIST_ENTRY LogEntries;
     PLIST_ENTRY ListEntry;
     PLOG_ENTRY LogEntry;
 
+    if (LogCtx->Stopping && !IgnoreStopping)
+        return;
+
+    InitializeListHead(&LogEntries);
+
+    EnterCriticalSection(&LogCtx->Lock);
+    if (LogCtx->Stopping && !IgnoreStopping) {
+        LeaveCriticalSection(&LogCtx->Lock);
+        return;
+    }
+
+    while (!IsListEmpty(&LogCtx->ListHead)) {
+        ListEntry = RemoveHeadList(&LogCtx->ListHead);
+        InsertTailList(&LogEntries, ListEntry);
+    }
+    LeaveCriticalSection(&LogCtx->Lock);
+
+    if (0 == LogFileLock(LogCtx)) {
+        if (0 == LogFileSetPointerToEnd(LogCtx)) {
+            for (ListEntry = LogEntries.Flink; ListEntry != &LogEntries; ListEntry = ListEntry->Flink) {
+                LogEntry = CONTAINING_RECORD(ListEntry, LOG_ENTRY, ListEntry);
+                LogFileWriteEntry(LogCtx, LogEntry);
+            }
+            FlushFileBuffers(LogCtx->hFile);
+        }
+        LogFileUnlock(LogCtx);
+    }
+
+    while (!IsListEmpty(&LogEntries)) {
+        ListEntry = RemoveHeadList(&LogEntries);
+        LogEntry = CONTAINING_RECORD(ListEntry, LOG_ENTRY, ListEntry);
+        free(LogEntry);
+    }
+}
+
+DWORD LogThreadRoutine(PLOG_CONTEXT LogCtx)
+{
     while (!LogCtx->Stopping) {
         WaitForSingleObject(LogCtx->hEvent, INFINITE);
-        if (LogCtx->Stopping)
-            break;
-
-        EnterCriticalSection(&LogCtx->Lock);
-        if (LogCtx->Stopping) {
-            LeaveCriticalSection(&LogCtx->Lock);
-            break;
-        }
-
-        InitializeListHead(&LogEntries);
-        while (!IsListEmpty(&LogCtx->ListHead)) {
-            ListEntry = RemoveHeadList(&LogCtx->ListHead);
-            InsertTailList(&LogEntries, ListEntry);
-        }
-        LeaveCriticalSection(&LogCtx->Lock);
-
-        while (!IsListEmpty(&LogEntries)) {
-            ListEntry = RemoveHeadList(&LogEntries);
-            LogEntry = CONTAINING_RECORD(ListEntry, LOG_ENTRY, ListEntry);
-            LogWriteEntry(LogCtx, LogEntry);
-            free(LogEntry);
-        }
-        FlushFileBuffers(LogCtx->hFile);
+        if (!LogCtx->Stopping)
+            LogWriteExistingEntries(LogCtx, FALSE);
     }
 
     return 0;
@@ -113,7 +158,6 @@ DWORD LogThreadRoutine(PLOG_CONTEXT LogCtx)
 DWORD LogInit(PLOG_CONTEXT LogCtx, PWCHAR FilePath)
 {
     DWORD Err;
-    LARGE_INTEGER Offset;
 
     memset(LogCtx, 0, sizeof(*LogCtx));
 
@@ -132,12 +176,6 @@ DWORD LogInit(PLOG_CONTEXT LogCtx, PWCHAR FilePath)
     if (LogCtx->hFile == INVALID_HANDLE_VALUE) {
         Err = GetLastError();
         goto fail_close_event;
-    }
-
-    Offset.QuadPart = 0;
-    if (!SetFilePointerEx(LogCtx->hFile, Offset, NULL, FILE_END)) {
-        Err = GetLastError();
-        goto fail_close_file;
     }
 
     LogCtx->hThread = CreateThread(NULL, 0, LogThreadRoutine, LogCtx, 0, NULL);
@@ -159,22 +197,14 @@ fail_delete_critical_section:
 
 VOID LogRelease(PLOG_CONTEXT LogCtx)
 {
-    PLIST_ENTRY ListEntry;
-    PLOG_ENTRY LogEntry;
-
     LogCtx->Stopping = 1;
+    EnterCriticalSection(&LogCtx->Lock);
+    LeaveCriticalSection(&LogCtx->Lock);
 
     WaitForSingleObject(LogCtx->hThread, INFINITE);
 
-    EnterCriticalSection(&LogCtx->Lock);
-    while (!IsListEmpty(&LogCtx->ListHead)) {
-        ListEntry = RemoveHeadList(&LogCtx->ListHead);
-        LogEntry = CONTAINING_RECORD(ListEntry, LOG_ENTRY, ListEntry);
-        LogWriteEntry(LogCtx, LogEntry);
-        free(LogEntry);
-    }
-    FlushFileBuffers(LogCtx->hFile);
-    LeaveCriticalSection(&LogCtx->Lock);
+    LogWriteExistingEntries(LogCtx, TRUE);
+
     DeleteCriticalSection(&LogCtx->Lock);
     CloseHandle(LogCtx->hEvent);
     CloseHandle(LogCtx->hFile);
