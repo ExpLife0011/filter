@@ -4,7 +4,6 @@
 
 typedef struct _FBWORKER {
     HANDLE hThread;
-    HANDLE hEvent;
     volatile Stopping;
     PVOID   Context;
 } FBWORKER, *PFBWORKER;
@@ -22,46 +21,48 @@ PFBSERVER GetFbServer(VOID)
     return &g_FbServer;
 }
 
-VOID ServerWorkerStop(PFBWORKER Worker)
+VOID ServerWorkerStop(PFBWORKER Worker, PFBSERVER Server)
 {
     Worker->Stopping = 1;
-    SetEvent(Worker->hEvent);
+    LInf("Waiting thread");
     WaitForSingleObject(Worker->hThread, INFINITE);
+    LInf("Waited thread");
     CloseHandle(Worker->hThread);
-    CloseHandle(Worker->hEvent);
-}
-
-DWORD ServerWorkerStart(PFBWORKER Worker, PTHREAD_START_ROUTINE Routine, PVOID Context)
-{
-    memset(Worker, 0, sizeof(*Worker));
-    Worker->Context = Context;
-    Worker->hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-    if (!Worker->hEvent)
-        return GetLastError();
-
-    Worker->hThread = CreateThread(NULL, 0, Routine, Worker, 0, NULL);
-    if (!Worker->hThread) {
-        DWORD Err = GetLastError();
-        CloseHandle(Worker->hEvent);
-        return Err;
-    }
-
-    return 0;
 }
 
 DWORD ServerWorkerRoutine(PFBWORKER Worker)
 {
     PFBSERVER Server = (PFBSERVER)Worker->Context;
+    DWORD IoBytes;
+    ULONG_PTR CompKey;
+    OVERLAPPED *pOverlapped;
+    DWORD Err;
 
     LInf("Worker starting");
 
     while (!Worker->Stopping) {
-        WaitForSingleObject(Worker->hEvent, INFINITE);
+        if (!GetQueuedCompletionStatus(Server->hIoCompPort, &IoBytes,
+                                       &CompKey, &pOverlapped, 1000)) {
+            Err = GetLastError();
+            if (Err != WAIT_TIMEOUT)
+                LErr("GetQueuedCompletionStatus failed Error %d", Err);
+        }
         if (Worker->Stopping)
             break;
     }
 
     LInf("Worker stopped");
+    return 0;
+}
+
+DWORD ServerWorkerStart(PFBWORKER Worker, PFBSERVER Server)
+{
+    memset(Worker, 0, sizeof(*Worker));
+    Worker->Context = Server;
+    Worker->hThread = CreateThread(NULL, 0, ServerWorkerRoutine, Worker, 0, NULL);
+    if (!Worker->hThread)
+        return GetLastError();
+
     return 0;
 }
 
@@ -83,7 +84,7 @@ DWORD ServerCreateWorkers(PFBSERVER Server, ULONG NumWorkers)
             goto fail;
         }
 
-        Err = ServerWorkerStart(Server->Worker[i], ServerWorkerRoutine, Server);
+        Err = ServerWorkerStart(Server->Worker[i], Server);
         if (Err) {
             free(Server->Worker[i]);
             goto fail;
@@ -94,8 +95,11 @@ DWORD ServerCreateWorkers(PFBSERVER Server, ULONG NumWorkers)
     return 0;
 
 fail:
+    for (j = 0; j < i; j++)
+        Server->Worker[j]->Stopping = 1;
+
     for (j = 0; j < i; j++) {
-        ServerWorkerStop(Server->Worker[i]);
+        ServerWorkerStop(Server->Worker[i], Server);
         free(Server->Worker[i]);
     }
     free(Server->Worker);
@@ -108,8 +112,11 @@ VOID ServerDeleteWorkers(PFBSERVER Server)
 {
     ULONG i;
 
+    for (i = 0; i < Server->NumWorkers; i++)
+        Server->Worker[i]->Stopping = 1;
+
     for (i = 0; i < Server->NumWorkers; i++) {
-        ServerWorkerStop(Server->Worker[i]);
+        ServerWorkerStop(Server->Worker[i], Server);
         free(Server->Worker[i]);
     }
     free(Server->Worker);

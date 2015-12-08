@@ -246,7 +246,7 @@ def make_dirs(dirs, elog):
             do_cmd("rmdir /s /q " + d, elog)
         do_cmd("mkdir " + d, elog)
 
-def rebuild_target(elog, build_dir, tmp_dir, target):
+def rebuild_target(elog, build_dir, tmp_dir, target, binary):
     bdir = os.path.join(build_dir, target)
     tdir = os.path.join(tmp_dir, target)
     make_dirs([bdir, tdir], elog)
@@ -254,11 +254,21 @@ def rebuild_target(elog, build_dir, tmp_dir, target):
     client_tdir = os.path.join(tdir, "client")
     server_tdir = os.path.join(tdir, "server")
     make_dirs([client_tdir, driver_tdir, server_tdir], elog)
-    build_driver(elog, bdir, client_tdir, target)
-    build_client(elog, bdir, driver_tdir, target)
-    build_server(elog, bdir, server_tdir, target)
 
-def rebuild(elog, target):
+    if binary == "driver":
+        build_driver(elog, bdir, client_tdir, target)
+    elif binary == "client":
+        build_client(elog, bdir, driver_tdir, target)
+    elif binary == "server":
+        build_server(elog, bdir, server_tdir, target)
+    elif binary == "all":
+        build_driver(elog, bdir, client_tdir, target)
+        build_client(elog, bdir, driver_tdir, target)
+        build_server(elog, bdir, server_tdir, target)
+    else:
+        raise Exception("Unknown binary " + binary)
+
+def rebuild(elog, target, binary):
     odir = None
     try:
         os.system("taskkill /F /im mspdbsrv.exe")
@@ -274,9 +284,9 @@ def rebuild(elog, target):
         os.chdir(BUILD_TMP)
         if target == 'all':
             for t in TARGETS:
-                rebuild_target(elog, BUILD, BUILD_TMP, t)
+                rebuild_target(elog, BUILD, BUILD_TMP, t, binary)
         else:
-            rebuild_target(elog, BUILD, BUILD_TMP, target)
+            rebuild_target(elog, BUILD, BUILD_TMP, target, binary)
     except Exception as e:
         elog.exception(str(e))
     finally:
@@ -286,5 +296,6 @@ def rebuild(elog, target):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("target", type=str, help="target: win7, win8, win81, win10")
+    parser.add_argument("binary", type=str, help="binary: client, driver, server, all")
     args = parser.parse_args()
-    rebuild(log, args.target)
+    rebuild(log, args.target, args.binary)
