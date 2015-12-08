@@ -115,7 +115,7 @@ DRIVER_SOURCES = ["driver.c", "klog.c", "fastio.c", "helpers.c", "worker.c", "so
 
 CLIENT_SOURCES = ["client.c", "scmload.c", "main.c"]
 
-SERVER_SOURCES = ["log.c", "main.c"]
+SERVER_SOURCES = ["log.c", "main.c", "server.c"]
 
 TARGET_WIN7 = "win7"
 TARGET_WIN8 = "win8"

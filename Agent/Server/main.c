@@ -1,5 +1,6 @@
 #include "base.h"
 #include "log.h"
+#include "server.h"
 
 #define SVC_NAME L"FBackupServer"
 #define SVC_LOG_NAME SVC_NAME L".log"
@@ -44,34 +45,48 @@ VOID ReportSvcStatus(DWORD dwCurrentState,
     SetServiceStatus(SvcContext->StatusHandle, &SvcContext->Status);
 }
 
-VOID SvcRun(DWORD argc, WCHAR *argv[])
+DWORD SvcRun(DWORD argc, WCHAR *argv[])
 {
     PSVC_CONTEXT SvcContext = GetSvcContext();
+    DWORD Err;
 
     SvcContext->hStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (!SvcContext->hStopEvent) {
-        LErr("Cant create event Error %d", GetLastError());
-        ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0);
-        return;
+        Err = GetLastError();
+        LErr("Cant create event Error %d", Err);
+        ReportSvcStatus(SERVICE_STOPPED, Err, 0);
+        return Err;
     }
 
     SvcContext->hStoppedEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (!SvcContext->hStoppedEvent) {
-        LErr("Cant create event Error %d", GetLastError());
+        Err = GetLastError();
+        LErr("Cant create event Error %d", Err);
         CloseHandle(SvcContext->hStopEvent);
-        ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0);
-        return;
+        ReportSvcStatus(SERVICE_STOPPED, Err, 0);
+        return Err;
+    }
+
+    Err = ServerStart();
+    if (Err) {
+        LErr("Server start failed Error %d", Err);
+        CloseHandle(SvcContext->hStopEvent);
+        CloseHandle(SvcContext->hStoppedEvent);
+        ReportSvcStatus(SERVICE_STOPPED, Err, 0);
+        return Err;
     }
 
     ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
-    LInf("Starting stop waiting");
+    LInf("Starting waiting stop signal loop");
     while(!SvcContext->Stopping) {
         WaitForSingleObject(SvcContext->hStopEvent, INFINITE);
     }
 
     LInf("Stopping");
-
     ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+
+    ServerStop();
+
     SetEvent(SvcContext->hStoppedEvent);
     ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0);
 
@@ -79,6 +94,7 @@ VOID SvcRun(DWORD argc, WCHAR *argv[])
 
     CloseHandle(SvcContext->hStopEvent);
     CloseHandle(SvcContext->hStoppedEvent);
+    return Err;
 }
 
 VOID SvcStop()
