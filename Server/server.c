@@ -58,6 +58,7 @@ typedef struct _FBSERVER {
     PADDRINFOW          AddrInfo;
     CRITICAL_SECTION    Lock;
     LIST_ENTRY          ClientListHead;
+    SYSTEM_INFO         SysInfo;
 } FBSERVER, *PFBSERVER;
 
 typedef struct _FBWORKER {
@@ -641,6 +642,8 @@ DWORD ServerStart(VOID)
     InitializeListHead(&Server->ClientListHead);
     InitializeCriticalSection(&Server->Lock);
 
+    GetSystemInfo(&Server->SysInfo);
+    
     Err = WSAStartup(WINSOCK_VERSION, &Server->WsaData);
     if (Err) {
         LErr("WSAStartup failed Error %d", Err);
@@ -676,7 +679,8 @@ DWORD ServerStart(VOID)
         goto fail_delete_accept_thread;
     }
 
-    Err = ServerCreateWorkers(Server, 4);
+    LInf("Number of CPU's %d", Server->SysInfo.dwNumberOfProcessors);
+    Err = ServerCreateWorkers(Server, Server->SysInfo.dwNumberOfProcessors);
     if (Err) {
         LErr("ServerCreateWorkers Error %d", Err);
         Server->Stopping = 1;
