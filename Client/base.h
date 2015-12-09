@@ -1,5 +1,5 @@
-#ifndef __FBACKUP_SERVER_BASE_H__
-#define __FBACKUP_SERVER_BASE_H__
+#ifndef __FBACKUP_CLIENT_BASE_H__
+#define __FBACKUP_CLIENT_BASE_H__
 
 #define WIN32_LEAN_AND_MEAN
 

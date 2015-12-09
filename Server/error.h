@@ -1,8 +1,0 @@
-#ifndef __FBACKUP_SERVER_ERROR_H__
-#define __FBACKUP_SERVER_ERROR_H__
-
-
-#define FB_ERROR_BASE (0xD0000000)
-#define FB_ERROR_NO_MEMORY (FB_ERROR_BASE + 1)
-
-#endif

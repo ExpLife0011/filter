@@ -138,5 +138,26 @@ AppendTailList(
     return;
 }
 
+FORCEINLINE
+VOID MoveList(PLIST_ENTRY DstListHead, PLIST_ENTRY SrcListHead)
+{
+    PLIST_ENTRY Flink, Blink;
+
+    if (IsListEmpty(SrcListHead)) {
+        InitializeListHead(DstListHead);
+        return;
+    }
+
+    Flink = SrcListHead->Flink;
+    Blink = SrcListHead->Blink;
+
+    DstListHead->Flink = Flink;
+    Flink->Blink = DstListHead;
+    DstListHead->Blink = Blink;
+    Blink->Flink = DstListHead;
+
+    InitializeListHead(SrcListHead);
+}
+
 #endif
 

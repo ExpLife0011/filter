@@ -1,7 +1,7 @@
-#include <Windows.h>
-#include <stdio.h>
 #include "scmload.h"
 #include "client.h"
+
+#include <winioctl.h>
 
 HANDLE CDrvOpen()
 {

@@ -112,18 +112,12 @@ VOID LogWriteExistingEntries(PLOG_CONTEXT LogCtx, BOOL IgnoreStopping)
     if (LogCtx->Stopping && !IgnoreStopping)
         return;
 
-    InitializeListHead(&LogEntries);
-
     EnterCriticalSection(&LogCtx->Lock);
     if (LogCtx->Stopping && !IgnoreStopping) {
         LeaveCriticalSection(&LogCtx->Lock);
         return;
     }
-
-    while (!IsListEmpty(&LogCtx->ListHead)) {
-        ListEntry = RemoveHeadList(&LogCtx->ListHead);
-        InsertTailList(&LogEntries, ListEntry);
-    }
+    MoveList(&LogEntries, &LogCtx->ListHead);
     LeaveCriticalSection(&LogCtx->Lock);
 
     if (0 == LogFileLock(LogCtx)) {

@@ -1,7 +1,7 @@
 #ifndef __FBACKUP_CTL_SCM_LOAD_H__
 #define __FBACKUP_CTL_SCM_LOAD_H__
 
-#include <Windows.h>
+#include "base.h"
 
 SC_HANDLE ScmOpenSCMHandle();
 

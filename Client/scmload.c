@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include "scmload.h"
 
 SC_HANDLE ScmOpenSCMHandle()

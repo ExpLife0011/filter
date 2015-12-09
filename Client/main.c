@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include "client.h"
 
 BOOL IsCmdEqual(WCHAR *cmd1, WCHAR *cmd2)
