@@ -11,6 +11,7 @@ DWORD SrvOpen(PWCHAR Host, PWCHAR Port, PSRV_CON *pSrvCon)
     if (!SrvCon)
         return FB_E_NO_MEMORY;
 
+    memset(SrvCon, 0, sizeof(*SrvCon));
     memset(&Hints, 0, sizeof(Hints));
 
     Hints.ai_family = AF_INET;
@@ -88,4 +89,5 @@ VOID SrvClose(PSRV_CON SrvCon)
 {
     shutdown(SrvCon->Socket, SD_BOTH);
     closesocket(SrvCon->Socket);
+    free(SrvCon);
 }

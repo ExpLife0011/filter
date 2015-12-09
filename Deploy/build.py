@@ -113,7 +113,7 @@ SERVER_OUT_PDB=SERVER_NAME + ".pdb"
 
 DRIVER_SOURCES = ["driver.c", "klog.c", "fastio.c", "helpers.c", "worker.c", "socket.c", "map.c", "tests.c"]
 
-CLIENT_SOURCES = ["client.c", "scmload.c", "main.c", "srvcon.c"]
+CLIENT_SOURCES = ["client.c", "scmload.c", "main.c", "srvcon.c", "srvapi.c"]
 
 SERVER_SOURCES = ["log.c", "main.c", "server.c"]
 
