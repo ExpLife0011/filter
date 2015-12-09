@@ -24,7 +24,7 @@ VOID GlobalLog(ULONG Level, PCHAR File, ULONG Line, PCHAR Func, PCHAR Fmt, ...);
 #define LWrn(Fmt, ...)   \
             GlobalLog(LOG_WRN, __FILE__, __LINE__, __FUNCTION__, (Fmt), ##__VA_ARGS__)
 
-DWORD GlobalLogInit(PWCHAR FilePath);
+DWORD GlobalLogInit(PWCHAR FilePath, ULONG Level);
 VOID GlobalLogRelease();
 
 #endif

@@ -2,19 +2,20 @@
 #include "list_entry.h"
 
 typedef struct _LOG_ENTRY {
-    CHAR Buf[256];
-    ULONG BufUsed;
-    LIST_ENTRY ListEntry;
+    CHAR        Buf[256];
+    ULONG       BufUsed;
+    LIST_ENTRY  ListEntry;
 } LOG_ENTRY, *PLOG_ENTRY;
 
 typedef struct _LOG_CONTEXT {
-    HANDLE hThread;
-    HANDLE hFile;
-    HANDLE hEvent;
-    WCHAR  FilePath[256];
-    LIST_ENTRY ListHead;
-    CRITICAL_SECTION Lock;
-    volatile LONG Stopping;
+    HANDLE              hThread;
+    HANDLE              hFile;
+    HANDLE              hEvent;
+    WCHAR               FilePath[256];
+    LIST_ENTRY          ListHead;
+    CRITICAL_SECTION    Lock;
+    volatile LONG       Stopping;
+    ULONG               Level;
 } LOG_CONTEXT, *PLOG_CONTEXT;
 
 LOG_CONTEXT g_LogCtx;
@@ -149,12 +150,12 @@ DWORD LogThreadRoutine(PLOG_CONTEXT LogCtx)
     return 0;
 }
 
-DWORD LogInit(PLOG_CONTEXT LogCtx, PWCHAR FilePath)
+DWORD LogInit(PLOG_CONTEXT LogCtx, PWCHAR FilePath, ULONG Level)
 {
     DWORD Err;
 
     memset(LogCtx, 0, sizeof(*LogCtx));
-
+    LogCtx->Level = Level;
     InitializeListHead(&LogCtx->ListHead);
     _snwprintf(LogCtx->FilePath, RTL_NUMBER_OF(LogCtx->FilePath) - 1, L"%ws", FilePath);
     InitializeCriticalSection(&LogCtx->Lock);
@@ -231,6 +232,9 @@ VOID Log(PLOG_CONTEXT LogCtx, ULONG Level, PCHAR File, ULONG Line, PCHAR Func, P
     ULONG BufSize, BufLeft;
     SYSTEMTIME Time;
 
+    if (Level < LogCtx->Level)
+        return;
+
     LogEntry = malloc(sizeof(*LogEntry));
     if (!LogEntry)
         return;
@@ -278,9 +282,9 @@ VOID Log(PLOG_CONTEXT LogCtx, ULONG Level, PCHAR File, ULONG Line, PCHAR Func, P
         free(LogEntry);
 }
 
-DWORD GlobalLogInit(PWCHAR FilePath)
+DWORD GlobalLogInit(PWCHAR FilePath, ULONG Level)
 {
-    return LogInit(&g_LogCtx, FilePath);
+    return LogInit(&g_LogCtx, FilePath, Level);
 }
 
 VOID GlobalLogRelease()

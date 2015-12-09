@@ -1,6 +1,6 @@
 #include "srvcon.h"
 
-DWORD SrvOpen(PWCHAR Host, PWCHAR Port, PSRV_CON *pSrvCon)
+DWORD SrvConOpen(PWCHAR Host, PWCHAR Port, PSRV_CON *pSrvCon)
 {
     SOCKET Socket;
     DWORD Err;
@@ -21,7 +21,7 @@ DWORD SrvOpen(PWCHAR Host, PWCHAR Port, PSRV_CON *pSrvCon)
 
     if (GetAddrInfoW(Host, Port, &Hints, &AddrInfo)) {
         Err = WSAGetLastError();
-        printf("GetAddrInfoW failed Error %d", Err);
+        printf("GetAddrInfoW failed Error %d\n", Err);
         free(SrvCon);
         return Err;
     }
@@ -37,17 +37,19 @@ DWORD SrvOpen(PWCHAR Host, PWCHAR Port, PSRV_CON *pSrvCon)
 
     if (connect(Socket, AddrInfo->ai_addr, (int)AddrInfo->ai_addrlen)) {
         Err = WSAGetLastError();
-        printf("socket connect failed Error %d", Err);
+        printf("socket connect failed Error %d\n", Err);
         FreeAddrInfoW(AddrInfo);
+        closesocket(Socket);
         free(SrvCon);
         return Err;
     }
 
+    SrvCon->Socket = Socket;
     *pSrvCon = SrvCon;
     return 0;
 }
 
-DWORD SrvSend(PSRV_CON SrvCon, PVOID Buf, ULONG Size)
+DWORD SrvConSend(PSRV_CON SrvCon, PVOID Buf, ULONG Size)
 {
     int Sent;
     ULONG TotalSent = 0;
@@ -55,16 +57,16 @@ DWORD SrvSend(PSRV_CON SrvCon, PVOID Buf, ULONG Size)
     while (TotalSent < Size) {
         Sent = send(SrvCon->Socket, (PCHAR)Buf + TotalSent,
                     Size - TotalSent, 0);
-        if (Sent == SOCKET_ERROR) {
+        if (Sent == SOCKET_ERROR)
             return WSAGetLastError();
-        }
+
         TotalSent+= Sent;
     }
 
     return 0;
 }
 
-DWORD SrvRecv(PSRV_CON SrvCon, PVOID Buf, ULONG Size, ULONG *pReceived, BOOL *pbClosed)
+DWORD SrvConRecv(PSRV_CON SrvCon, PVOID Buf, ULONG Size, ULONG *pReceived, BOOL *pbClosed)
 {
     int Received;
     ULONG TotalReceived = 0;
@@ -72,22 +74,36 @@ DWORD SrvRecv(PSRV_CON SrvCon, PVOID Buf, ULONG Size, ULONG *pReceived, BOOL *pb
     while (TotalReceived < Size) {
         Received = recv(SrvCon->Socket, (PCHAR)Buf + TotalReceived,
                         Size - TotalReceived, 0);
-        if (Received == SOCKET_ERROR) {
+        if (Received == SOCKET_ERROR)
             return WSAGetLastError();
-        }
+
         if (Received == 0) {
-            *pbClosed = TRUE;
-            return 0;
+            if (pbClosed)
+                *pbClosed = TRUE;
+            break;
         }
         TotalReceived+= Received;
     }
 
+    *pReceived = TotalReceived;
     return 0;
 }
 
-VOID SrvClose(PSRV_CON SrvCon)
+VOID SrvConClose(PSRV_CON SrvCon)
 {
     shutdown(SrvCon->Socket, SD_BOTH);
     closesocket(SrvCon->Socket);
     free(SrvCon);
+}
+
+DWORD SrvConInit(VOID)
+{
+    WSADATA WsaData;
+
+    return WSAStartup(WINSOCK_VERSION, &WsaData);
+}
+
+VOID SrvConRelease(VOID)
+{
+    WSACleanup();
 }

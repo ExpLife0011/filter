@@ -308,7 +308,7 @@ int wmain(int argc, WCHAR* argv[])
                BinaryPath, SVC_LOG_NAME);
     LogFilePath[RTL_NUMBER_OF(LogFilePath) - 1] = '\0';
 
-    Err = GlobalLogInit(LogFilePath);
+    Err = GlobalLogInit(LogFilePath, LOG_INF);
     if (Err)
         goto terminate;
 

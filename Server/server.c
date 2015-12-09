@@ -221,7 +221,7 @@ VOID ClientDelete(PFBCLIENT Client)
 
 DWORD ServerTimeRequest(PVOID *pRespBody, ULONG *RespBodySize)
 {
-    PFB_SRV_RESP_TIME_BODY pTime;
+    PFB_SRV_RESP_TIME pTime;
     SYSTEMTIME Time;
 
     pTime = malloc(sizeof(*pTime));
@@ -272,7 +272,7 @@ DWORD ServerHandleRequest(PFB_SRV_REQ_HEADER ReqHeader, PVOID ReqBody,
 
 VOID ServerWorkerHandleIo(PFBCLIENT Client, PFBCLIENT_IO ClientIo, ULONG Size, DWORD Err)
 {
-    LInf("Client %p State %d Size %d ClientIo %p Op %d Err %d",
+    LDbg("Client %p State %d Size %d ClientIo %p Op %d Err %d",
          Client, Client->State, Size, ClientIo, ClientIo->Operation, Err);
 
     if (Err)
@@ -559,14 +559,14 @@ DWORD ServerAcceptRoutine(PFBSERVER Server)
     PFBCLIENT Client;
 
     while (!Server->Stopping) {
-        LInf("Start accepting");
+        LDbg("Start accepting");
         Socket = accept(Server->ListenSocket, NULL, NULL);
         if (Socket == INVALID_SOCKET) {
             Err = WSAGetLastError();
             LErr("Accept Error %d", Err);
             continue;
         }
-        LInf("Accept succeded");
+        LDbg("Accept succeded");
         Client = ClientCreate(Server, Socket);
         if (!Client) {
             if (!Server->Stopping)
@@ -582,7 +582,7 @@ DWORD ServerAcceptRoutine(PFBSERVER Server)
             LErr("CreateIoCompletionPort failed Error %d", Err);
             ClientDelete(Client);
         }
-        LInf("Client %p attached to IO completion port", Client);
+        LDbg("Client %p attached to IO completion port", Client);
         Client->State = FBCLIENT_S_RECV_HEADER;
         Err = ClientIoQueue(Client, FBCLIENT_IO_RECEIVE,
                             &Client->ReqHeader, sizeof(Client->ReqHeader));

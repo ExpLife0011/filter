@@ -30,7 +30,7 @@ typedef struct _FB_SRV_RESP_HEADER {
     unsigned long Id;
 } FB_SRV_RESP_HEADER, *PFB_SRV_RESP_HEADER;
 
-typedef struct _FB_SRV_RESP_TIME_BODY {
+typedef struct _FB_SRV_RESP_TIME {
     unsigned short Year;
     unsigned short Month;
     unsigned short DayOfWeek;
@@ -39,11 +39,6 @@ typedef struct _FB_SRV_RESP_TIME_BODY {
     unsigned short Minute;
     unsigned short Second;
     unsigned short Milliseconds;
-} FB_SRV_RESP_TIME_BODY, *PFB_SRV_RESP_TIME_BODY;
-
-typedef struct _FB_SRV_RESP_TIME {
-    FB_SRV_RESP_HEADER Header;
-    FB_SRV_RESP_TIME_BODY Body;
 } FB_SRV_RESP_TIME, *PFB_SRV_RESP_TIME;
 
 #pragma pack(pop)

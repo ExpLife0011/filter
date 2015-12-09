@@ -4,12 +4,16 @@
 #include "base.h"
 #include "srvcon.h"
 
-typedef struct _SRVAPI_CONTEXT {
+typedef struct _SRV_API_CTX {
     PSRV_CON    SrvCon;
-} SRVAPI_CONTEXT, *PSRVAPI_CONTEXT;
+} SRV_API_CTX, *PSRV_API_CTX;
 
-PSRVAPI_CONTEXT SrvApiConnect(PWCHAR Host, PWCHAR Port);
-DWORD SrvApiGetTime(PSRVAPI_CONTEXT Api, PSYSTEMTIME Time);
-VOID SrvApiRelease(PSRVAPI_CONTEXT Api);
+DWORD SrvApiInit(VOID);
+VOID SrvApiRelease(VOID);
+
+DWORD SrvApiConnect(PWCHAR Host, PWCHAR Port, PSRV_API_CTX *pApiCtx);
+DWORD SrvApiGetTime(PSRV_API_CTX ApiCtx, PSYSTEMTIME Time);
+VOID SrvApiClose(PSRV_API_CTX ApiCtx);
+
 
 #endif

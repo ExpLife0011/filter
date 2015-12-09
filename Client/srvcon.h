@@ -11,12 +11,12 @@ typedef struct _SRV_CON {
     SOCKET  Socket;
 } SRV_CON, *PSRV_CON;
 
-DWORD SrvOpen(PWCHAR Host, PWCHAR Port, PSRV_CON *pSrvCon);
+DWORD SrvConInit(VOID);
+VOID SrvConRelease(VOID);
 
-DWORD SrvSend(PSRV_CON SrvCon, PVOID Buf, ULONG Size);
-
-DWORD SrvRecv(PSRV_CON SrvCon, PVOID Buf, ULONG Size, ULONG *pReceived, BOOL *pbClosed);
-
-VOID SrvClose(PSRV_CON SrvCon);
+DWORD SrvConOpen(PWCHAR Host, PWCHAR Port, PSRV_CON *pSrvCon);
+DWORD SrvConSend(PSRV_CON SrvCon, PVOID Buf, ULONG Size);
+DWORD SrvConRecv(PSRV_CON SrvCon, PVOID Buf, ULONG Size, ULONG *pReceived, BOOL *pbClosed);
+VOID SrvConClose(PSRV_CON SrvCon);
 
 #endif
