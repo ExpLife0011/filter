@@ -1,6 +1,13 @@
 #ifndef __FBACKUP_SERVER_MISC_H__
 #define __FBACKUP_SERVER_MISC_H__
 
+#include "base.h"
+
+FORCEINLINE ULONG ULongMin(ULONG Val1, ULONG Val2)
+{
+    return (Val1 < Val2) ? Val1 : Val2;
+}
+
 FORCEINLINE ULONG HashPtr(PVOID Ptr)
 {
     ULONG_PTR Val = (ULONG_PTR)Ptr;

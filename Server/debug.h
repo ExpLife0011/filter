@@ -8,4 +8,6 @@ VOID __DebugPrintf(PCHAR Component, PCHAR File, PCHAR Function, ULONG Line, PCHA
 #define DebugPrintf(Fmt, ...) \
             __DebugPrintf(__FBACKUP_COMPONENT__, __FILE__, __FUNCTION__, __LINE__, (Fmt), ##__VA_ARGS__);
 
+VOID DebugInit(VOID);
+
 #endif

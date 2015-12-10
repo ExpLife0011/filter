@@ -2,6 +2,7 @@
 #include "log.h"
 #include "server.h"
 #include "memalloc.h"
+#include "debug.h"
 
 #define SVC_NAME L"FBackupServer"
 #define SVC_LOG_NAME SVC_NAME L".log"
@@ -294,6 +295,8 @@ int wmain(int argc, WCHAR* argv[])
         { NULL, NULL } 
     }; 
     WCHAR BinaryFilePath[MAX_PATH], BinaryPath[MAX_PATH], LogFilePath[MAX_PATH];
+
+    DebugInit();
 
     Err = MemAllocInit();
     if (Err)
