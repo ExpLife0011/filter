@@ -1,5 +1,7 @@
 #include "log.h"
 #include "list_entry.h"
+#include "memalloc.h"
+#include "fmt.h"
 
 typedef struct _LOG_ENTRY {
     CHAR        Buf[256];
@@ -19,45 +21,6 @@ typedef struct _LOG_CONTEXT {
 } LOG_CONTEXT, *PLOG_CONTEXT;
 
 LOG_CONTEXT g_LogCtx;
-
-LONG WriteMsg2(PCHAR *pBuff, ULONG *pLeft, PCHAR Fmt, va_list Args)
-{
-    LONG Result;
-
-    if (*pLeft < 0)
-        return -1;
-
-    Result = _vsnprintf(*pBuff, *pLeft, Fmt, Args);
-    if (Result) {
-        *pBuff+=Result;
-        *pLeft-=Result;
-    } 
-
-    return Result;
-}
-
-LONG WriteMsg(PCHAR *pBuff, ULONG *pLeft, PCHAR Fmt, ...)
-{
-    LONG Result;
-    va_list Args;
-
-    va_start(Args, Fmt);
-    Result = WriteMsg2(pBuff, pLeft, Fmt, Args);
-    va_end(Args);
-
-    return Result;
-}
-
-PCHAR TruncatePath(PCHAR FileName)
-{
-    PCHAR BaseName;
-
-    BaseName = strrchr(FileName, '\\');
-    if (BaseName)
-        return ++BaseName;
-    else
-        return FileName;
-}
 
 DWORD LogFileSetPointerToEnd(PLOG_CONTEXT LogCtx)
 {
@@ -135,7 +98,7 @@ VOID LogWriteExistingEntries(PLOG_CONTEXT LogCtx, BOOL IgnoreStopping)
     while (!IsListEmpty(&LogEntries)) {
         ListEntry = RemoveHeadList(&LogEntries);
         LogEntry = CONTAINING_RECORD(ListEntry, LOG_ENTRY, ListEntry);
-        free(LogEntry);
+        MemFree(LogEntry);
     }
 }
 
@@ -225,7 +188,8 @@ BOOLEAN LogEntryEnqueue(PLOG_CONTEXT LogCtx, PLOG_ENTRY LogEntry)
     return Inserted;
 }
 
-VOID Log(PLOG_CONTEXT LogCtx, ULONG Level, PCHAR File, ULONG Line, PCHAR Func, PCHAR Fmt, va_list Args)
+VOID Log(PLOG_CONTEXT LogCtx, ULONG Level, PCHAR Component, PCHAR File,
+         PCHAR Func, ULONG Line, PCHAR Fmt, va_list Args)
 {
     PLOG_ENTRY LogEntry;
     PCHAR BufPos;
@@ -235,7 +199,7 @@ VOID Log(PLOG_CONTEXT LogCtx, ULONG Level, PCHAR File, ULONG Line, PCHAR Func, P
     if (Level < LogCtx->Level)
         return;
 
-    LogEntry = malloc(sizeof(*LogEntry));
+    LogEntry = MemAlloc(sizeof(*LogEntry));
     if (!LogEntry)
         return;
 
@@ -246,32 +210,32 @@ VOID Log(PLOG_CONTEXT LogCtx, ULONG Level, PCHAR File, ULONG Line, PCHAR Func, P
 
     switch (Level) {
     case LOG_INF:
-        WriteMsg(&BufPos, &BufLeft, "INF");
+        FmtMsg(&BufPos, &BufLeft, "INF");
         break;
     case LOG_ERR:
-        WriteMsg(&BufPos, &BufLeft, "ERR");
+        FmtMsg(&BufPos, &BufLeft, "ERR");
         break;
     case LOG_DBG:
-        WriteMsg(&BufPos, &BufLeft, "DBG");
+        FmtMsg(&BufPos, &BufLeft, "DBG");
         break;
     case LOG_WRN:
-        WriteMsg(&BufPos, &BufLeft, "WRN");
+        FmtMsg(&BufPos, &BufLeft, "WRN");
         break;
     default:
-        WriteMsg(&BufPos, &BufLeft, "UNK");
+        FmtMsg(&BufPos, &BufLeft, "UNK");
         break;
     }
 
     GetSystemTime(&Time);
-    WriteMsg(&BufPos, &BufLeft," %02d:%02d:%02d.%03d ",
+    FmtMsg(&BufPos, &BufLeft," %02d:%02d:%02d.%03d ",
              Time.wHour, Time.wMinute,
              Time.wSecond, Time.wMilliseconds);
 
-    WriteMsg(&BufPos, &BufLeft,"p%d t%d", GetCurrentProcessId(), GetCurrentThreadId());
-    WriteMsg(&BufPos, &BufLeft," %s():%s:%d: ", Func, TruncatePath(File), Line);
+    FmtMsg(&BufPos, &BufLeft,"p%d t%d", GetCurrentProcessId(), GetCurrentThreadId());
+    FmtMsg(&BufPos, &BufLeft," %s:%s():%s,%d: ", Component, Func, FmtTruncatePath(File), Line);
 
-    WriteMsg2(&BufPos, &BufLeft, Fmt, Args);
-    if (WriteMsg(&BufPos, &BufLeft, "\r\n") <= 0) {
+    FmtMsg2(&BufPos, &BufLeft, Fmt, Args);
+    if (FmtMsg(&BufPos, &BufLeft, "\r\n") <= 0) {
         LogEntry->Buf[BufSize-2] = '\r';
         LogEntry->Buf[BufSize-1] = '\n';
         LogEntry->BufUsed = BufSize;
@@ -279,7 +243,7 @@ VOID Log(PLOG_CONTEXT LogCtx, ULONG Level, PCHAR File, ULONG Line, PCHAR Func, P
         LogEntry->BufUsed = BufSize - BufLeft;
 
     if (!LogEntryEnqueue(LogCtx, LogEntry))
-        free(LogEntry);
+        MemFree(LogEntry);
 }
 
 DWORD GlobalLogInit(PWCHAR FilePath, ULONG Level)
@@ -292,11 +256,12 @@ VOID GlobalLogRelease()
     LogRelease(&g_LogCtx);
 }
 
-VOID GlobalLog(ULONG Level, PCHAR File, ULONG Line, PCHAR Func, PCHAR Fmt, ...)
+VOID GlobalLog(ULONG Level, PCHAR Component, PCHAR File, PCHAR Func,
+               ULONG Line, PCHAR Fmt, ...)
 {
     va_list Args;
 
     va_start(Args, Fmt);
-    Log(&g_LogCtx, Level, File, Line, Func, Fmt, Args);
+    Log(&g_LogCtx, Level, Component, File, Func, Line, Fmt, Args);
     va_end(Args);
 }

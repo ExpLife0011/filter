@@ -11,4 +11,6 @@
 
 #include "..\shared\error.h"
 
+#define __FBACKUP_COMPONENT__ "FBackupServer"
+
 #endif

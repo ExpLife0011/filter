@@ -1,6 +1,7 @@
 #include "base.h"
 #include "log.h"
 #include "server.h"
+#include "memalloc.h"
 
 #define SVC_NAME L"FBackupServer"
 #define SVC_LOG_NAME SVC_NAME L".log"
@@ -294,14 +295,18 @@ int wmain(int argc, WCHAR* argv[])
     }; 
     WCHAR BinaryFilePath[MAX_PATH], BinaryPath[MAX_PATH], LogFilePath[MAX_PATH];
 
+    Err = MemAllocInit();
+    if (Err)
+        goto terminate;
+
     if (0 == GetModuleFileName(NULL, BinaryFilePath, MAX_PATH)) {
         Err = GetLastError();
-        goto terminate;
+        goto mem_alloc_release;
     }
 
     if (!GetBinaryPath(BinaryFilePath, BinaryPath)) {
         Err = ERROR_INVALID_PARAMETER;
-        goto terminate;
+        goto mem_alloc_release;
     }
 
     _snwprintf(LogFilePath, RTL_NUMBER_OF(LogFilePath) - 1, L"%ws\\%ws",
@@ -310,7 +315,7 @@ int wmain(int argc, WCHAR* argv[])
 
     Err = GlobalLogInit(LogFilePath, LOG_INF);
     if (Err)
-        goto terminate;
+        goto mem_alloc_release;
 
     LInf("Starting");
 
@@ -323,7 +328,7 @@ int wmain(int argc, WCHAR* argv[])
         if (argc != 2) {
             LErr("Invalid number of args");
             Err = ERROR_INVALID_PARAMETER;
-            goto exit;
+            goto log_release;
         }
 
         if (IsCmdEqual(argv[1], L"create")) {
@@ -332,7 +337,7 @@ int wmain(int argc, WCHAR* argv[])
             hScm = ScmOpenSCMHandle();
             if (!hScm) {
                 Err = GetLastError();
-                goto exit;
+                goto log_release;
             }
             Err = ScmInstallService(hScm, SVC_NAME, BinaryFilePath);
             ScmCloseSCMHandle(hScm);
@@ -342,7 +347,7 @@ int wmain(int argc, WCHAR* argv[])
             hScm = ScmOpenSCMHandle();
             if (!hScm) {
                 Err = GetLastError();
-                goto exit;
+                goto log_release;
             }
             Err = ScmDeleteService(hScm, SVC_NAME);
             ScmCloseSCMHandle(hScm);
@@ -352,7 +357,7 @@ int wmain(int argc, WCHAR* argv[])
             hScm = ScmOpenSCMHandle();
             if (!hScm) {
                 Err = GetLastError();
-                goto exit;
+                goto log_release;
             }
             Err = ScmStartService(hScm, SVC_NAME);
             ScmCloseSCMHandle(hScm);
@@ -362,7 +367,7 @@ int wmain(int argc, WCHAR* argv[])
             hScm = ScmOpenSCMHandle();
             if (!hScm) {
                 Err = GetLastError();
-                goto exit;
+                goto log_release;
             }
             Err = ScmStopService(hScm, SVC_NAME);
             ScmCloseSCMHandle(hScm);
@@ -371,9 +376,11 @@ int wmain(int argc, WCHAR* argv[])
             Err = ERROR_INVALID_PARAMETER;
         }
     }
-exit:
+log_release:
     LInf("Exiting Error %d", Err);
     GlobalLogRelease();
+mem_alloc_release:
+    MemAllocRelease();
 terminate:
     TerminateProcess(GetCurrentProcess(), Err);
     return 0;

@@ -2,6 +2,7 @@
 #include "log.h"
 #include "list_entry.h"
 #include "api.h"
+#include "memalloc.h"
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -76,7 +77,7 @@ PFBSERVER GetFbServer(VOID)
 
 VOID ClientIoFree(PFBCLIENT_IO Io)
 {
-    free(Io);
+    MemFree(Io);
 }
 
 VOID ClientIoDelete(PFBCLIENT_IO Io)
@@ -93,7 +94,7 @@ PFBCLIENT_IO ClientIoCreate(PFBCLIENT Client, ULONG Operation, PVOID Buf, ULONG 
 {
     PFBCLIENT_IO Io;
 
-    Io = malloc(sizeof(*Io));
+    Io = MemAlloc(sizeof(*Io));
     if (!Io)
         return NULL;
 
@@ -189,10 +190,10 @@ VOID ClientFree(PFBCLIENT Client)
 {
     DeleteCriticalSection(&Client->Lock);
     if (Client->ReqBody)
-        free(Client->ReqBody);
+        MemFree(Client->ReqBody);
     if (Client->RespBody)
-        free(Client->RespBody);
-    free(Client);
+        MemFree(Client->RespBody);
+    MemFree(Client);
 }
 
 VOID ClientClose(PFBCLIENT Client)
@@ -225,7 +226,7 @@ DWORD ServerTimeRequest(PVOID *pRespBody, ULONG *RespBodySize)
     PFB_SRV_RESP_TIME pTime;
     SYSTEMTIME Time;
 
-    pTime = malloc(sizeof(*pTime));
+    pTime = MemAlloc(sizeof(*pTime));
     if (!pTime)
         return FB_E_NO_MEMORY;
 
@@ -310,7 +311,7 @@ restart:
         }
 
         if (ReqHeader->Size) {
-            Client->ReqBody = malloc(ReqHeader->Size);
+            Client->ReqBody = MemAlloc(ReqHeader->Size);
             if (!Client->ReqBody) {
                 LErr("No memory");
                 goto fail_client;
@@ -333,7 +334,7 @@ restart:
             goto fail_client;
 
         if (Client->ReqBody) {
-            free(Client->ReqBody);
+            MemFree(Client->ReqBody);
             Client->ReqBody = NULL;
         }
         Client->State = FBCLIENT_S_SEND_HEADER;
@@ -354,7 +355,7 @@ restart:
         break;
     case FBCLIENT_S_SEND_BODY:
         if (Client->RespBody) {
-            free(Client->RespBody);
+            MemFree(Client->RespBody);
             Client->RespBody = NULL;
         }
         Client->State = FBCLIENT_S_CREATED;
@@ -425,13 +426,13 @@ DWORD ServerCreateWorkers(PFBSERVER Server, ULONG NumWorkers)
     DWORD Err;
 
     Server->NumWorkers = 0;
-    Server->Worker = (PFBWORKER *)malloc(NumWorkers*sizeof(PFBWORKER *));
+    Server->Worker = (PFBWORKER *)MemAlloc(NumWorkers*sizeof(PFBWORKER *));
     if (!Server->Worker)
         return FB_E_NO_MEMORY;
 
     memset(Server->Worker, 0, NumWorkers*sizeof(PFBWORKER *));
     for (i = 0; i < NumWorkers; i++) {
-        Server->Worker[i] = (PFBWORKER)malloc(sizeof(FBWORKER));
+        Server->Worker[i] = (PFBWORKER)MemAlloc(sizeof(FBWORKER));
         if (!Server->Worker[i]) {
             Err = GetLastError();
             goto fail;
@@ -439,7 +440,7 @@ DWORD ServerCreateWorkers(PFBSERVER Server, ULONG NumWorkers)
 
         Err = ServerWorkerStart(Server->Worker[i], Server);
         if (Err) {
-            free(Server->Worker[i]);
+            MemFree(Server->Worker[i]);
             goto fail;
         }
     }
@@ -453,9 +454,9 @@ fail:
 
     for (j = 0; j < i; j++) {
         ServerWorkerStop(Server->Worker[i], Server);
-        free(Server->Worker[i]);
+        MemFree(Server->Worker[i]);
     }
-    free(Server->Worker);
+    MemFree(Server->Worker);
     Server->Worker = NULL;
 
     return Err;
@@ -470,9 +471,9 @@ VOID ServerDeleteWorkers(PFBSERVER Server)
 
     for (i = 0; i < Server->NumWorkers; i++) {
         ServerWorkerStop(Server->Worker[i], Server);
-        free(Server->Worker[i]);
+        MemFree(Server->Worker[i]);
     }
-    free(Server->Worker);
+    MemFree(Server->Worker);
     Server->Worker = NULL;
     Server->NumWorkers = 0;
 }
@@ -526,7 +527,7 @@ PFBCLIENT ClientCreate(PFBSERVER Server, SOCKET Socket)
     if (Server->Stopping)
         return NULL;
 
-    Client = malloc(sizeof(*Client));
+    Client = MemAlloc(sizeof(*Client));
     if (!Client)
         return NULL;
 

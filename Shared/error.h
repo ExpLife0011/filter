@@ -10,5 +10,6 @@
 #define FB_E_BAD_SIZE                   (FB_E_BASE + 6)
 #define FB_E_INCOMP_HEADER              (FB_E_BASE + 7)
 #define FB_E_INCOMP_DATA                (FB_E_BASE + 8)
+#define FB_E_BAD_ALIGNMENT              (FB_E_BASE + 9)
 
 #endif
