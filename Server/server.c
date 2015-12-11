@@ -3,6 +3,7 @@
 #include "list_entry.h"
 #include "api.h"
 #include "memalloc.h"
+#include "time.h"
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -46,6 +47,9 @@ typedef struct _FBCLIENT {
     FB_SRV_RESP_HEADER  RespHeader;
     PVOID               ReqBody;
     PVOID               RespBody;
+    FBTIME              ReqRcvTime;
+    FBTIME              ReqSendTime;
+    FBTIME              ReqHandleTime;
 } FBCLIENT, *PFBCLIENT;
 
 typedef struct _FBSERVER {
@@ -277,12 +281,20 @@ VOID ServerWorkerHandleIo(PFBCLIENT Client, PFBCLIENT_IO ClientIo, ULONG Size, D
     LDbg("Client %p State %d Size %d ClientIo %p Op %d Err %d",
          Client, Client->State, Size, ClientIo, ClientIo->Operation, Err);
 
-    if (Err)
+    if (Err) {
+        ClientIoDelete(ClientIo);
         goto fail_client;
+    }
 
     if (ClientIo->Size != Size) {
+        if (Size == 0 && ClientIo->Operation == FBCLIENT_IO_RECEIVE) {
+            ClientIoDelete(ClientIo);
+            goto close_client;
+        }
+
         LErr("Client %p ClientIo %p Size %d vs. Received %d",
              Client, ClientIo, ClientIo->Size, Size);
+        ClientIoDelete(ClientIo);
         goto fail_client;
     }
 
@@ -328,15 +340,20 @@ restart:
         break;
     }
     case FBCLIENT_S_RECV_BODY:
+        FbTimeStop(&Client->ReqRcvTime);
+        FbTimeStart(&Client->ReqHandleTime);
         Err = ServerHandleRequest(&Client->ReqHeader, Client->ReqBody,
                                   &Client->RespHeader, &Client->RespBody);
         if (Err)
             goto fail_client;
+        FbTimeStop(&Client->ReqHandleTime);
 
         if (Client->ReqBody) {
             MemFree(Client->ReqBody);
             Client->ReqBody = NULL;
         }
+        
+        FbTimeStart(&Client->ReqSendTime);
         Client->State = FBCLIENT_S_SEND_HEADER;
         Err = ClientIoQueue(Client, FBCLIENT_IO_SEND, &Client->RespHeader, sizeof(Client->RespHeader));
         if (Err)
@@ -358,7 +375,17 @@ restart:
             MemFree(Client->RespBody);
             Client->RespBody = NULL;
         }
-        Client->State = FBCLIENT_S_CREATED;
+        FbTimeStop(&Client->ReqSendTime);
+        LInf("Req RcvTime=%lld HandleTime=%lld SendTime=%lld",
+             FbTimeDeltaNs(&Client->ReqRcvTime), FbTimeDeltaNs(&Client->ReqHandleTime),
+             FbTimeDeltaNs(&Client->ReqSendTime));
+
+        FbTimeStart(&Client->ReqRcvTime);
+        Client->State = FBCLIENT_S_RECV_HEADER;
+        Err = ClientIoQueue(Client, FBCLIENT_IO_RECEIVE,
+                            &Client->ReqHeader, sizeof(Client->ReqHeader));
+        if (Err)
+            goto fail_client;
         break;
     default:
         LErr("Unknown client %p state %d", Client, Client->State);
@@ -367,6 +394,7 @@ restart:
 
     return;
 
+close_client:
 fail_client:
     ClientDelete(Client);
     return;
@@ -585,6 +613,7 @@ DWORD ServerAcceptRoutine(PFBSERVER Server)
             ClientDelete(Client);
         }
         LDbg("Client %p attached to IO completion port", Client);
+        FbTimeStart(&Client->ReqRcvTime);
         Client->State = FBCLIENT_S_RECV_HEADER;
         Err = ClientIoQueue(Client, FBCLIENT_IO_RECEIVE,
                             &Client->ReqHeader, sizeof(Client->ReqHeader));
