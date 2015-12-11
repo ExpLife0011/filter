@@ -6,6 +6,7 @@ DWORD SrvConOpen(PWCHAR Host, PWCHAR Port, PSRV_CON *pSrvCon)
     DWORD Err;
     ADDRINFOW Hints, *AddrInfo;
     PSRV_CON SrvCon;
+    int OptVal;
 
     SrvCon = malloc(sizeof(*SrvCon));
     if (!SrvCon)
@@ -31,6 +32,17 @@ DWORD SrvConOpen(PWCHAR Host, PWCHAR Port, PSRV_CON *pSrvCon)
     if (Socket == INVALID_SOCKET) {
         Err = WSAGetLastError();
         FreeAddrInfoW(AddrInfo);
+        free(SrvCon);
+        return Err;
+    }
+
+    OptVal = 1;
+    if (setsockopt(Socket, SOL_SOCKET, SO_REUSEADDR,
+                    (char *) &OptVal, sizeof (OptVal))) {
+        Err = WSAGetLastError();
+        printf("socket connect failed Error %d\n", Err);
+        FreeAddrInfoW(AddrInfo);
+        closesocket(Socket);
         free(SrvCon);
         return Err;
     }
