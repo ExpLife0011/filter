@@ -26,6 +26,8 @@ typedef struct _BTreeNode {
     ULONG NrKeys;
     PVOID *Values;
     ULONG NrValues;
+    ULONG64 *Childs;
+    ULONG NrChilds;
     ULONG TreeT;
 } BTreeNode, *PBTreeNode;
 
