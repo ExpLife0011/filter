@@ -26,10 +26,12 @@ typedef struct _BTreeNode {
     ULONG NrKeys;
     PVOID *Values;
     ULONG NrValues;
-    ULONG T;
+    ULONG TreeT;
 } BTreeNode, *PBTreeNode;
 
-ULONG BTreeInit(PBTree Tree, ULONG64 RootPosition, PVOID Ctx, PBTreeCallbacks Callbacks);
+ULONG BTreeOpen(PBTree Tree, ULONG64 RootPosition, PVOID Ctx, PBTreeCallbacks Callbacks);
+ULONG BTreeCreate(PBTree Tree, ULONG TreeT, PVOID Ctx, PBTreeCallbacks Callbacks);
+ULONG64 BTreeGetPosition(PBTree Tree);
 
 ULONG BTreeInsert(PBTree Tree, PVOID Key, PVOID Value);
 
